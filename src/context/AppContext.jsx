@@ -101,7 +101,7 @@ export function AppProvider({ children }) {
     const { data, error } = await supabase
       .from('groups')
       .select(
-        'id, name, description, owner_id, created_at, updated_at, group_members ( user_id, role, profiles ( id, email, full_name ) )'
+        'id, name, description, owner_id, created_at, updated_at, group_members ( user_id, role, profiles!group_members_user_id_fkey ( id, email, full_name ) )'
       )
       .order('updated_at', { ascending: false });
     if (error) {
@@ -162,7 +162,7 @@ export function AppProvider({ children }) {
     const { data, error } = await supabase
       .from('groups')
       .select(
-        'id, name, description, owner_id, created_at, updated_at, group_members ( user_id, role, profiles ( id, email, full_name ) )'
+        'id, name, description, owner_id, created_at, updated_at, group_members ( user_id, role, profiles!group_members_user_id_fkey ( id, email, full_name ) )'
       )
       .eq('id', groupId)
       .single();
@@ -188,7 +188,7 @@ export function AppProvider({ children }) {
         owner_id: session.user.id,
       })
       .select(
-        'id, name, description, owner_id, created_at, updated_at, group_members ( user_id, role, profiles ( id, email, full_name ) )'
+        'id, name, description, owner_id, created_at, updated_at, group_members ( user_id, role, profiles!group_members_user_id_fkey ( id, email, full_name ) )'
       )
       .single();
     if (groupError) throw groupError;
