@@ -131,6 +131,22 @@ alter table public.group_members enable row level security;
 alter table public.expenses enable row level security;
 alter table public.settlements enable row level security;
 
+-- Helper: avoid RLS recursion when checking membership
+create or replace function public.is_group_member(gid uuid, uid uuid)
+returns boolean
+language sql
+security definer
+set search_path = public
+as $$
+  select exists (
+    select 1 from public.group_members gm
+    where gm.group_id = gid
+      and gm.user_id = uid
+  );
+$$;
+
+grant execute on function public.is_group_member(uuid, uuid) to authenticated;
+
 -- Profiles policies
 drop policy if exists "Profiles: read own" on public.profiles;
 create policy "Profiles: read own" on public.profiles
@@ -155,13 +171,7 @@ for update using (id = auth.uid());
 -- Groups policies
 drop policy if exists "Groups: members can read" on public.groups;
 create policy "Groups: members can read" on public.groups
-for select using (
-  exists (
-    select 1 from public.group_members gm
-    where gm.group_id = public.groups.id
-      and gm.user_id = auth.uid()
-  )
-);
+for select using (public.is_group_member(public.groups.id, auth.uid()));
 
 drop policy if exists "Groups: owners can create" on public.groups;
 create policy "Groups: owners can create" on public.groups
@@ -178,22 +188,12 @@ for delete using (auth.uid() = owner_id);
 -- Group members policies
 drop policy if exists "Members: group members can read" on public.group_members;
 create policy "Members: group members can read" on public.group_members
-for select using (
-  exists (
-    select 1 from public.group_members gm
-    where gm.group_id = public.group_members.group_id
-      and gm.user_id = auth.uid()
-  )
-);
+for select using (public.is_group_member(public.group_members.group_id, auth.uid()));
 
 drop policy if exists "Members: group members can add" on public.group_members;
 create policy "Members: group members can add" on public.group_members
 for insert with check (
-  exists (
-    select 1 from public.group_members gm
-    where gm.group_id = public.group_members.group_id
-      and gm.user_id = auth.uid()
-  )
+  public.is_group_member(public.group_members.group_id, auth.uid())
   or exists (
     select 1 from public.groups g
     where g.id = public.group_members.group_id
@@ -207,81 +207,35 @@ for delete using (
   public.group_members.user_id <> (
     select g.owner_id from public.groups g where g.id = public.group_members.group_id
   )
-  and exists (
-    select 1 from public.group_members gm
-    where gm.group_id = public.group_members.group_id
-      and gm.user_id = auth.uid()
-  )
+  and public.is_group_member(public.group_members.group_id, auth.uid())
 );
 
 -- Expenses policies
 drop policy if exists "Expenses: group members can read" on public.expenses;
 create policy "Expenses: group members can read" on public.expenses
-for select using (
-  exists (
-    select 1 from public.group_members gm
-    where gm.group_id = public.expenses.group_id
-      and gm.user_id = auth.uid()
-  )
-);
+for select using (public.is_group_member(public.expenses.group_id, auth.uid()));
 
 drop policy if exists "Expenses: group members can add" on public.expenses;
 create policy "Expenses: group members can add" on public.expenses
-for insert with check (
-  exists (
-    select 1 from public.group_members gm
-    where gm.group_id = public.expenses.group_id
-      and gm.user_id = auth.uid()
-  )
-);
+for insert with check (public.is_group_member(public.expenses.group_id, auth.uid()));
 
 drop policy if exists "Expenses: group members can update" on public.expenses;
 create policy "Expenses: group members can update" on public.expenses
-for update using (
-  exists (
-    select 1 from public.group_members gm
-    where gm.group_id = public.expenses.group_id
-      and gm.user_id = auth.uid()
-  )
-);
+for update using (public.is_group_member(public.expenses.group_id, auth.uid()));
 
 drop policy if exists "Expenses: group members can delete" on public.expenses;
 create policy "Expenses: group members can delete" on public.expenses
-for delete using (
-  exists (
-    select 1 from public.group_members gm
-    where gm.group_id = public.expenses.group_id
-      and gm.user_id = auth.uid()
-  )
-);
+for delete using (public.is_group_member(public.expenses.group_id, auth.uid()));
 
 -- Settlements policies
 drop policy if exists "Settlements: group members can read" on public.settlements;
 create policy "Settlements: group members can read" on public.settlements
-for select using (
-  exists (
-    select 1 from public.group_members gm
-    where gm.group_id = public.settlements.group_id
-      and gm.user_id = auth.uid()
-  )
-);
+for select using (public.is_group_member(public.settlements.group_id, auth.uid()));
 
 drop policy if exists "Settlements: group members can add" on public.settlements;
 create policy "Settlements: group members can add" on public.settlements
-for insert with check (
-  exists (
-    select 1 from public.group_members gm
-    where gm.group_id = public.settlements.group_id
-      and gm.user_id = auth.uid()
-  )
-);
+for insert with check (public.is_group_member(public.settlements.group_id, auth.uid()));
 
 drop policy if exists "Settlements: group members can delete" on public.settlements;
 create policy "Settlements: group members can delete" on public.settlements
-for delete using (
-  exists (
-    select 1 from public.group_members gm
-    where gm.group_id = public.settlements.group_id
-      and gm.user_id = auth.uid()
-  )
-);
+for delete using (public.is_group_member(public.settlements.group_id, auth.uid()));
