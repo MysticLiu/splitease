@@ -101,6 +101,14 @@ create trigger on_auth_user_created
 after insert on auth.users
 for each row execute procedure public.handle_new_user();
 
+-- Backfill profiles for existing users (safe to re-run)
+insert into public.profiles (id, email, full_name)
+select id,
+       email,
+       coalesce(raw_user_meta_data->>'full_name', raw_user_meta_data->>'name', email)
+from auth.users
+on conflict (id) do nothing;
+
 -- Helper RPC: lookup user by email (for invites)
 create or replace function public.find_profile_by_email(email_input text)
 returns table (id uuid, email text, full_name text)
