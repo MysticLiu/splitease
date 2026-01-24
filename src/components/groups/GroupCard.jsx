@@ -26,6 +26,11 @@ export function GroupCard({ group }) {
           <h3 className="text-lg font-semibold text-gray-900 truncate">
             {group.name}
           </h3>
+          {group.description && (
+            <p className="text-sm text-gray-500 mt-1 truncate">
+              {group.description}
+            </p>
+          )}
 
           <div className="flex items-center gap-4 mt-2">
             <AvatarGroup members={group.members} max={4} size="sm" />

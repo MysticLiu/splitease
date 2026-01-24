@@ -11,7 +11,7 @@ import { ExpenseForm } from '../components/expenses/ExpenseForm';
 import { BalanceSummary } from '../components/balances/BalanceSummary';
 import { DebtList } from '../components/balances/DebtList';
 import { SettleUpModal } from '../components/balances/SettleUpModal';
-import { MemberListDisplay } from '../components/groups/MemberList';
+import { MemberList, MemberListDisplay } from '../components/groups/MemberList';
 import { useApp } from '../context/AppContext';
 import { calculateBalances } from '../utils/balanceCalculator';
 import { simplifyDebts } from '../utils/debtSimplifier';
@@ -27,6 +27,7 @@ export function GroupDetailPage() {
     updateExpense,
     deleteExpense,
     createSettlement,
+    addMember,
     deleteGroup,
   } = useApp();
 
@@ -107,6 +108,9 @@ export function GroupDetailPage() {
             <div className="flex items-start justify-between">
               <div>
                 <h2 className="text-xl font-bold text-gray-900 mb-2">{group.name}</h2>
+                {group.description && (
+                  <p className="text-sm text-gray-600 mb-3">{group.description}</p>
+                )}
                 <MemberListDisplay members={group.members} />
               </div>
               <Button
@@ -223,9 +227,15 @@ export function GroupDetailPage() {
         <div className="space-y-4">
           <div>
             <h4 className="font-medium text-gray-900 mb-2">Members</h4>
-            <MemberListDisplay members={group.members} />
+            <MemberList
+              members={group.members}
+              onAdd={(name) => addMember(groupId, name)}
+              editable
+              showAddForm
+            />
             <p className="text-xs text-gray-500 mt-2">
-              To add or remove members, please create a new group.
+              You can add members at any time. Removing members after expenses exist
+              isn&apos;t supported.
             </p>
           </div>
 

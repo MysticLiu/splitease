@@ -209,11 +209,12 @@ export function AppProvider({ children }) {
   }, [state]);
 
   // Helper functions
-  const createGroup = (name, memberNames) => {
+  const createGroup = (name, memberNames, description = '') => {
     const now = Date.now();
     const group = {
       id: crypto.randomUUID(),
       name,
+      description: description.trim(),
       members: memberNames.map(name => ({
         id: crypto.randomUUID(),
         name,

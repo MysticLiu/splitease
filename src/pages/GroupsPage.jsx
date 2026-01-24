@@ -16,8 +16,8 @@ export function GroupsPage() {
 
   const groups = getGroups();
 
-  const handleCreateGroup = ({ name, memberNames }) => {
-    const group = createGroup(name, memberNames);
+  const handleCreateGroup = ({ name, description, memberNames }) => {
+    const group = createGroup(name, memberNames, description);
     setShowCreateModal(false);
     navigate(`/groups/${group.id}`);
   };

@@ -18,8 +18,8 @@ export function HomePage() {
   const totalExpenses = Object.keys(state.expenses).length;
   const totalSettlements = Object.keys(state.settlements).length;
 
-  const handleCreateGroup = ({ name, memberNames }) => {
-    const group = createGroup(name, memberNames);
+  const handleCreateGroup = ({ name, description, memberNames }) => {
+    const group = createGroup(name, memberNames, description);
     setShowCreateModal(false);
     navigate(`/groups/${group.id}`);
   };

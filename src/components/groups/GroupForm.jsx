@@ -7,6 +7,7 @@ import { getAvatarColor } from '../../utils/formatters';
 
 export function GroupForm({ onSubmit, onCancel, initialData = null }) {
   const [name, setName] = useState(initialData?.name || '');
+  const [description, setDescription] = useState(initialData?.description || '');
   const [members, setMembers] = useState(
     initialData?.members || [
       { id: crypto.randomUUID(), name: 'You', avatarColor: getAvatarColor('You'), createdAt: Date.now() },
@@ -48,6 +49,7 @@ export function GroupForm({ onSubmit, onCancel, initialData = null }) {
 
     onSubmit({
       name: name.trim(),
+      description: description.trim(),
       memberNames: members.map((m) => m.name),
     });
   };
@@ -64,6 +66,13 @@ export function GroupForm({ onSubmit, onCancel, initialData = null }) {
         }}
         error={errors.name}
         autoFocus
+      />
+
+      <Input
+        label="Description (optional)"
+        placeholder="What is this group for?"
+        value={description}
+        onChange={(e) => setDescription(e.target.value)}
       />
 
       <div>
