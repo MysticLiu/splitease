@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Plus, Users, Receipt, Wallet } from 'lucide-react';
 import { Header } from '../components/layout/Header';
@@ -11,17 +11,32 @@ import { useApp } from '../context/AppContext';
 
 export function HomePage() {
   const navigate = useNavigate();
-  const { getGroups, createGroup, state } = useApp();
+  const { getGroups, createGroup, getTotals } = useApp();
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [createError, setCreateError] = useState(null);
+  const [stats, setStats] = useState({ expenses: 0, settlements: 0 });
 
   const groups = getGroups();
-  const totalExpenses = Object.keys(state.expenses).length;
-  const totalSettlements = Object.keys(state.settlements).length;
 
-  const handleCreateGroup = ({ name, description, memberNames }) => {
-    const group = createGroup(name, memberNames, description);
-    setShowCreateModal(false);
-    navigate(`/groups/${group.id}`);
+  useEffect(() => {
+    let mounted = true;
+    getTotals().then((totals) => {
+      if (mounted) setStats(totals);
+    });
+    return () => {
+      mounted = false;
+    };
+  }, [getTotals]);
+
+  const handleCreateGroup = async ({ name, description }) => {
+    setCreateError(null);
+    try {
+      const group = await createGroup(name, description);
+      setShowCreateModal(false);
+      navigate(`/groups/${group.id}`);
+    } catch (error) {
+      setCreateError(error.message || 'Failed to create group.');
+    }
   };
 
   return (
@@ -49,13 +64,13 @@ export function HomePage() {
           <StatCard
             icon={Receipt}
             label="Expenses"
-            value={totalExpenses}
+            value={stats.expenses}
             color="emerald"
           />
           <StatCard
             icon={Wallet}
             label="Settlements"
-            value={totalSettlements}
+            value={stats.settlements}
             color="amber"
           />
         </div>
@@ -88,6 +103,9 @@ export function HomePage() {
           onSubmit={handleCreateGroup}
           onCancel={() => setShowCreateModal(false)}
         />
+        {createError && (
+          <p className="mt-3 text-sm text-red-600">{createError}</p>
+        )}
       </Modal>
     </div>
   );

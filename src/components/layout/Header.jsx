@@ -1,9 +1,12 @@
 import { Link, useLocation } from 'react-router-dom';
 import { Home, Users, ArrowLeft } from 'lucide-react';
 import { clsx } from 'clsx';
+import { Avatar } from '../ui/Avatar';
+import { useApp } from '../../context/AppContext';
 
 export function Header({ title, showBack = false, onBack }) {
   const location = useLocation();
+  const { profile, signOut } = useApp();
 
   return (
     <header className="sticky top-0 z-40 bg-white border-b">
@@ -37,17 +40,34 @@ export function Header({ title, showBack = false, onBack }) {
         </div>
 
         {/* Right side - Navigation */}
-        {!showBack && (
-          <nav className="flex items-center gap-1">
-            <NavLink to="/" icon={Home} label="Home" active={location.pathname === '/'} />
-            <NavLink
-              to="/groups"
-              icon={Users}
-              label="Groups"
-              active={location.pathname.startsWith('/groups')}
-            />
-          </nav>
-        )}
+        <div className="flex items-center gap-3">
+          {!showBack && (
+            <nav className="flex items-center gap-1">
+              <NavLink to="/" icon={Home} label="Home" active={location.pathname === '/'} />
+              <NavLink
+                to="/groups"
+                icon={Users}
+                label="Groups"
+                active={location.pathname.startsWith('/groups')}
+              />
+            </nav>
+          )}
+          {profile && (
+            <div className="flex items-center gap-2">
+              <Avatar name={profile.fullName} color="#6366F1" size="xs" />
+              <span className="hidden sm:inline text-sm text-gray-700 max-w-[120px] truncate">
+                {profile.fullName}
+              </span>
+              <button
+                type="button"
+                onClick={signOut}
+                className="text-xs text-gray-500 hover:text-gray-700"
+              >
+                Sign out
+              </button>
+            </div>
+          )}
+        </div>
       </div>
     </header>
   );

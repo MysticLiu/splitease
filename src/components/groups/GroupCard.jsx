@@ -1,17 +1,23 @@
+import { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Users, ChevronRight } from 'lucide-react';
 import { Card, CardContent } from '../ui/Card';
 import { AvatarGroup } from '../ui/Avatar';
-import { formatCurrency, formatRelativeTime } from '../../utils/formatters';
+import { formatCurrency } from '../../utils/formatters';
 import { calculateBalances, getTotalOwed } from '../../utils/balanceCalculator';
 import { useApp } from '../../context/AppContext';
 
 export function GroupCard({ group }) {
   const navigate = useNavigate();
-  const { getGroupExpenses, getGroupSettlements } = useApp();
+  const { getGroupExpenses, getGroupSettlements, expensesByGroup, settlementsByGroup } = useApp();
 
-  const expenses = getGroupExpenses(group.id);
-  const settlements = getGroupSettlements(group.id);
+  const expenses = expensesByGroup[group.id] || [];
+  const settlements = settlementsByGroup[group.id] || [];
+
+  useEffect(() => {
+    getGroupExpenses(group.id);
+    getGroupSettlements(group.id);
+  }, [group.id, getGroupExpenses, getGroupSettlements]);
   const balances = calculateBalances(expenses, settlements, group.members);
   const totalOwed = getTotalOwed(balances);
 

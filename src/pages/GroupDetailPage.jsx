@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Plus, Settings, Trash2 } from 'lucide-react';
 import { Header } from '../components/layout/Header';
@@ -11,7 +11,8 @@ import { ExpenseForm } from '../components/expenses/ExpenseForm';
 import { BalanceSummary } from '../components/balances/BalanceSummary';
 import { DebtList } from '../components/balances/DebtList';
 import { SettleUpModal } from '../components/balances/SettleUpModal';
-import { MemberList, MemberListDisplay } from '../components/groups/MemberList';
+import { MemberListDisplay } from '../components/groups/MemberList';
+import { GroupMembersManager } from '../components/groups/GroupMembersManager';
 import { useApp } from '../context/AppContext';
 import { calculateBalances } from '../utils/balanceCalculator';
 import { simplifyDebts } from '../utils/debtSimplifier';
@@ -20,6 +21,7 @@ export function GroupDetailPage() {
   const { groupId } = useParams();
   const navigate = useNavigate();
   const {
+    session,
     getGroup,
     getGroupExpenses,
     getGroupSettlements,
@@ -27,8 +29,11 @@ export function GroupDetailPage() {
     updateExpense,
     deleteExpense,
     createSettlement,
-    addMember,
+    addMemberByEmail,
+    removeMember,
     deleteGroup,
+    expensesByGroup,
+    settlementsByGroup,
   } = useApp();
 
   const [activeTab, setActiveTab] = useState('expenses');
@@ -37,22 +42,53 @@ export function GroupDetailPage() {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [editingExpense, setEditingExpense] = useState(null);
   const [settlingDebt, setSettlingDebt] = useState(null);
+  const [group, setGroup] = useState(null);
+  const [loadingGroup, setLoadingGroup] = useState(true);
+  const [actionError, setActionError] = useState(null);
 
-  const group = getGroup(groupId);
-  const expenses = getGroupExpenses(groupId);
-  const settlements = getGroupSettlements(groupId);
+  const expenses = expensesByGroup[groupId] || [];
+  const settlements = settlementsByGroup[groupId] || [];
 
-  // Calculate balances and debts
+  useEffect(() => {
+    let mounted = true;
+    setLoadingGroup(true);
+    setActionError(null);
+    Promise.all([getGroup(groupId), getGroupExpenses(groupId), getGroupSettlements(groupId)])
+      .then(([groupData]) => {
+        if (mounted) {
+          setGroup(groupData);
+          setLoadingGroup(false);
+        }
+      })
+      .catch((error) => {
+        if (mounted) {
+          setActionError(error.message || 'Failed to load group.');
+          setLoadingGroup(false);
+        }
+      });
+    return () => {
+      mounted = false;
+    };
+  }, [groupId, getGroup, getGroupExpenses, getGroupSettlements]);
+
   const balances = useMemo(() => {
     if (!group) return {};
     return calculateBalances(expenses, settlements, group.members);
   }, [expenses, settlements, group]);
 
-  const debts = useMemo(() => {
-    return simplifyDebts(balances);
-  }, [balances]);
+  const debts = useMemo(() => simplifyDebts(balances), [balances]);
 
-  // Handle group not found
+  if (loadingGroup) {
+    return (
+      <div className="min-h-screen bg-gray-50">
+        <Header showBack onBack={() => navigate('/')} />
+        <PageContainer>
+          <div className="text-center py-12 text-gray-500">Loading group…</div>
+        </PageContainer>
+      </div>
+    );
+  }
+
   if (!group) {
     return (
       <div className="min-h-screen bg-gray-50">
@@ -68,33 +104,58 @@ export function GroupDetailPage() {
     );
   }
 
-  const handleAddExpense = (data) => {
-    createExpense(groupId, data.description, data.amount, data.paidBy, data.splitType, data.splits);
-    setShowExpenseModal(false);
+  const handleAddExpense = async (data) => {
+    setActionError(null);
+    try {
+      await createExpense(groupId, data.description, data.amount, data.paidBy, data.splitType, data.splits);
+      setShowExpenseModal(false);
+    } catch (error) {
+      setActionError(error.message || 'Failed to add expense.');
+    }
   };
 
-  const handleEditExpense = (data) => {
-    updateExpense(editingExpense.id, {
-      description: data.description,
-      amount: data.amount,
-      paidBy: data.paidBy,
-      splitType: data.splitType,
-      splits: data.splits,
-    });
-    setEditingExpense(null);
+  const handleEditExpense = async (data) => {
+    setActionError(null);
+    try {
+      await updateExpense(editingExpense.id, {
+        description: data.description,
+        amount: data.amount,
+        paidBy: data.paidBy,
+        splitType: data.splitType,
+        splits: data.splits,
+      });
+      setEditingExpense(null);
+    } catch (error) {
+      setActionError(error.message || 'Failed to update expense.');
+    }
   };
 
-  const handleDeleteExpense = (expenseId) => {
-    deleteExpense(expenseId);
+  const handleDeleteExpense = async (expenseId) => {
+    setActionError(null);
+    try {
+      await deleteExpense(expenseId, groupId);
+    } catch (error) {
+      setActionError(error.message || 'Failed to delete expense.');
+    }
   };
 
-  const handleSettle = (fromId, toId, amount) => {
-    createSettlement(groupId, fromId, toId, amount);
+  const handleSettle = async (fromId, toId, amount) => {
+    setActionError(null);
+    try {
+      await createSettlement(groupId, fromId, toId, amount);
+    } catch (error) {
+      setActionError(error.message || 'Failed to record settlement.');
+    }
   };
 
-  const handleDeleteGroup = () => {
-    deleteGroup(groupId);
-    navigate('/');
+  const handleDeleteGroup = async () => {
+    setActionError(null);
+    try {
+      await deleteGroup(groupId);
+      navigate('/');
+    } catch (error) {
+      setActionError(error.message || 'Failed to delete group.');
+    }
   };
 
   return (
@@ -102,7 +163,6 @@ export function GroupDetailPage() {
       <Header title={group.name} showBack onBack={() => navigate('/')} />
 
       <PageContainer>
-        {/* Group info card */}
         <Card className="mb-6">
           <CardContent>
             <div className="flex items-start justify-between">
@@ -124,7 +184,6 @@ export function GroupDetailPage() {
           </CardContent>
         </Card>
 
-        {/* Tabs */}
         <div className="flex gap-2 mb-6">
           <TabButton
             active={activeTab === 'expenses'}
@@ -146,7 +205,6 @@ export function GroupDetailPage() {
           </TabButton>
         </div>
 
-        {/* Tab content */}
         {activeTab === 'expenses' && (
           <div>
             <div className="flex justify-end mb-4">
@@ -155,6 +213,9 @@ export function GroupDetailPage() {
                 Add Expense
               </Button>
             </div>
+            {actionError && (
+              <p className="mb-3 text-sm text-red-600">{actionError}</p>
+            )}
             <ExpenseList
               expenses={expenses}
               members={group.members}
@@ -177,7 +238,6 @@ export function GroupDetailPage() {
         )}
       </PageContainer>
 
-      {/* Add expense modal */}
       <Modal
         isOpen={showExpenseModal}
         onClose={() => setShowExpenseModal(false)}
@@ -191,7 +251,6 @@ export function GroupDetailPage() {
         />
       </Modal>
 
-      {/* Edit expense modal */}
       <Modal
         isOpen={!!editingExpense}
         onClose={() => setEditingExpense(null)}
@@ -208,7 +267,6 @@ export function GroupDetailPage() {
         )}
       </Modal>
 
-      {/* Settle up modal */}
       <SettleUpModal
         isOpen={!!settlingDebt}
         onClose={() => setSettlingDebt(null)}
@@ -217,7 +275,6 @@ export function GroupDetailPage() {
         onConfirm={handleSettle}
       />
 
-      {/* Settings modal */}
       <Modal
         isOpen={showSettingsModal}
         onClose={() => setShowSettingsModal(false)}
@@ -227,35 +284,41 @@ export function GroupDetailPage() {
         <div className="space-y-4">
           <div>
             <h4 className="font-medium text-gray-900 mb-2">Members</h4>
-            <MemberList
+            <GroupMembersManager
               members={group.members}
-              onAdd={(name) => addMember(groupId, name)}
-              editable
-              showAddForm
+              ownerId={group.ownerId}
+              currentUserId={session?.user?.id}
+              onAdd={(email) => addMemberByEmail(groupId, email)}
+              onRemove={async (memberId) => {
+                await removeMember(groupId, memberId);
+                if (memberId === session?.user?.id) {
+                  navigate('/groups');
+                }
+              }}
             />
             <p className="text-xs text-gray-500 mt-2">
-              You can add members at any time. Removing members after expenses exist
-              isn&apos;t supported.
+              Members can be added or removed at any time.
             </p>
           </div>
 
           <hr />
 
-          <div>
-            <h4 className="font-medium text-red-600 mb-2">Danger Zone</h4>
-            <Button
-              variant="danger"
-              onClick={() => setShowDeleteConfirm(true)}
-              className="w-full"
-            >
-              <Trash2 className="w-4 h-4 mr-2" />
-              Delete Group
-            </Button>
-          </div>
+          {group.ownerId === session?.user?.id && (
+            <div>
+              <h4 className="font-medium text-red-600 mb-2">Danger Zone</h4>
+              <Button
+                variant="danger"
+                onClick={() => setShowDeleteConfirm(true)}
+                className="w-full"
+              >
+                <Trash2 className="w-4 h-4 mr-2" />
+                Delete Group
+              </Button>
+            </div>
+          )}
         </div>
       </Modal>
 
-      {/* Delete confirmation */}
       <Modal
         isOpen={showDeleteConfirm}
         onClose={() => setShowDeleteConfirm(false)}

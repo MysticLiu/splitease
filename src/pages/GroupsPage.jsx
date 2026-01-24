@@ -13,13 +13,19 @@ export function GroupsPage() {
   const navigate = useNavigate();
   const { getGroups, createGroup } = useApp();
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [createError, setCreateError] = useState(null);
 
   const groups = getGroups();
 
-  const handleCreateGroup = ({ name, description, memberNames }) => {
-    const group = createGroup(name, memberNames, description);
-    setShowCreateModal(false);
-    navigate(`/groups/${group.id}`);
+  const handleCreateGroup = async ({ name, description }) => {
+    setCreateError(null);
+    try {
+      const group = await createGroup(name, description);
+      setShowCreateModal(false);
+      navigate(`/groups/${group.id}`);
+    } catch (error) {
+      setCreateError(error.message || 'Failed to create group.');
+    }
   };
 
   return (
@@ -56,6 +62,9 @@ export function GroupsPage() {
           onSubmit={handleCreateGroup}
           onCancel={() => setShowCreateModal(false)}
         />
+        {createError && (
+          <p className="mt-3 text-sm text-red-600">{createError}</p>
+        )}
       </Modal>
     </div>
   );

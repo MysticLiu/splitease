@@ -1,339 +1,453 @@
-import { createContext, useContext, useReducer, useEffect } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import { supabase } from '../lib/supabaseClient';
 import { getAvatarColor } from '../utils/formatters';
 
 const AppContext = createContext(null);
 
-const STORAGE_KEY = 'splitwise_data';
-const SCHEMA_VERSION = 1;
+const toTimestamp = (value) => (value ? new Date(value).getTime() : Date.now());
 
-// Initial state structure
-const initialState = {
-  version: SCHEMA_VERSION,
-  groups: {},
-  expenses: {},
-  settlements: {},
+const mapMember = (memberRow) => {
+  const profile = memberRow.profiles || {};
+  const name = profile.full_name || profile.email || 'Unknown';
+  return {
+    id: memberRow.user_id,
+    name,
+    email: profile.email || '',
+    role: memberRow.role,
+    avatarColor: getAvatarColor(name),
+  };
 };
 
-// Load state from localStorage
-function loadState() {
-  try {
-    const stored = localStorage.getItem(STORAGE_KEY);
-    if (stored) {
-      const parsed = JSON.parse(stored);
-      // Check version and migrate if needed
-      if (parsed.version === SCHEMA_VERSION) {
-        return parsed;
-      }
-      // Future: handle migrations here
-    }
-  } catch (error) {
-    console.error('Error loading state:', error);
-  }
-  return initialState;
-}
+const normalizeGroup = (groupRow) => ({
+  id: groupRow.id,
+  name: groupRow.name,
+  description: groupRow.description || '',
+  ownerId: groupRow.owner_id,
+  createdAt: toTimestamp(groupRow.created_at),
+  updatedAt: toTimestamp(groupRow.updated_at),
+  members: (groupRow.group_members || []).map(mapMember),
+});
 
-// Action types
-const ACTIONS = {
-  // Groups
-  ADD_GROUP: 'ADD_GROUP',
-  UPDATE_GROUP: 'UPDATE_GROUP',
-  DELETE_GROUP: 'DELETE_GROUP',
-  ADD_MEMBER: 'ADD_MEMBER',
-  REMOVE_MEMBER: 'REMOVE_MEMBER',
-  // Expenses
-  ADD_EXPENSE: 'ADD_EXPENSE',
-  UPDATE_EXPENSE: 'UPDATE_EXPENSE',
-  DELETE_EXPENSE: 'DELETE_EXPENSE',
-  // Settlements
-  ADD_SETTLEMENT: 'ADD_SETTLEMENT',
-  DELETE_SETTLEMENT: 'DELETE_SETTLEMENT',
-  // Bulk
-  LOAD_STATE: 'LOAD_STATE',
-};
+const normalizeExpense = (row) => ({
+  id: row.id,
+  groupId: row.group_id,
+  description: row.description,
+  amount: row.amount,
+  paidBy: row.paid_by,
+  splitType: row.split_type,
+  splits: row.splits || [],
+  createdAt: toTimestamp(row.created_at),
+  updatedAt: toTimestamp(row.updated_at),
+});
 
-// Reducer function
-function appReducer(state, action) {
-  switch (action.type) {
-    case ACTIONS.LOAD_STATE:
-      return action.payload;
+const normalizeSettlement = (row) => ({
+  id: row.id,
+  groupId: row.group_id,
+  fromMemberId: row.from_user_id,
+  toMemberId: row.to_user_id,
+  amount: row.amount,
+  createdAt: toTimestamp(row.created_at),
+});
 
-    case ACTIONS.ADD_GROUP: {
-      const { group } = action.payload;
-      return {
-        ...state,
-        groups: {
-          ...state.groups,
-          [group.id]: group,
-        },
-      };
-    }
-
-    case ACTIONS.UPDATE_GROUP: {
-      const { groupId, updates } = action.payload;
-      return {
-        ...state,
-        groups: {
-          ...state.groups,
-          [groupId]: {
-            ...state.groups[groupId],
-            ...updates,
-            updatedAt: Date.now(),
-          },
-        },
-      };
-    }
-
-    case ACTIONS.DELETE_GROUP: {
-      const { groupId } = action.payload;
-      const { [groupId]: deletedGroup, ...remainingGroups } = state.groups;
-
-      // Also delete related expenses and settlements
-      const remainingExpenses = Object.fromEntries(
-        Object.entries(state.expenses).filter(([, e]) => e.groupId !== groupId)
-      );
-      const remainingSettlements = Object.fromEntries(
-        Object.entries(state.settlements).filter(([, s]) => s.groupId !== groupId)
-      );
-
-      return {
-        ...state,
-        groups: remainingGroups,
-        expenses: remainingExpenses,
-        settlements: remainingSettlements,
-      };
-    }
-
-    case ACTIONS.ADD_MEMBER: {
-      const { groupId, member } = action.payload;
-      const group = state.groups[groupId];
-      return {
-        ...state,
-        groups: {
-          ...state.groups,
-          [groupId]: {
-            ...group,
-            members: [...group.members, member],
-            updatedAt: Date.now(),
-          },
-        },
-      };
-    }
-
-    case ACTIONS.REMOVE_MEMBER: {
-      const { groupId, memberId } = action.payload;
-      const group = state.groups[groupId];
-      return {
-        ...state,
-        groups: {
-          ...state.groups,
-          [groupId]: {
-            ...group,
-            members: group.members.filter(m => m.id !== memberId),
-            updatedAt: Date.now(),
-          },
-        },
-      };
-    }
-
-    case ACTIONS.ADD_EXPENSE: {
-      const { expense } = action.payload;
-      return {
-        ...state,
-        expenses: {
-          ...state.expenses,
-          [expense.id]: expense,
-        },
-      };
-    }
-
-    case ACTIONS.UPDATE_EXPENSE: {
-      const { expenseId, updates } = action.payload;
-      return {
-        ...state,
-        expenses: {
-          ...state.expenses,
-          [expenseId]: {
-            ...state.expenses[expenseId],
-            ...updates,
-            updatedAt: Date.now(),
-          },
-        },
-      };
-    }
-
-    case ACTIONS.DELETE_EXPENSE: {
-      const { expenseId } = action.payload;
-      const { [expenseId]: deletedExpense, ...remainingExpenses } = state.expenses;
-      return {
-        ...state,
-        expenses: remainingExpenses,
-      };
-    }
-
-    case ACTIONS.ADD_SETTLEMENT: {
-      const { settlement } = action.payload;
-      return {
-        ...state,
-        settlements: {
-          ...state.settlements,
-          [settlement.id]: settlement,
-        },
-      };
-    }
-
-    case ACTIONS.DELETE_SETTLEMENT: {
-      const { settlementId } = action.payload;
-      const { [settlementId]: deletedSettlement, ...remainingSettlements } = state.settlements;
-      return {
-        ...state,
-        settlements: remainingSettlements,
-      };
-    }
-
-    default:
-      return state;
-  }
-}
-
-// Provider component
 export function AppProvider({ children }) {
-  const [state, dispatch] = useReducer(appReducer, null, loadState);
+  const [session, setSession] = useState(null);
+  const [profile, setProfile] = useState(null);
+  const [groups, setGroups] = useState([]);
+  const [expensesByGroup, setExpensesByGroup] = useState({});
+  const [settlementsByGroup, setSettlementsByGroup] = useState({});
+  const [loading, setLoading] = useState(true);
 
-  // Save to localStorage on state changes
   useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-    } catch (error) {
-      console.error('Error saving state:', error);
+    let mounted = true;
+    supabase.auth.getSession().then(({ data }) => {
+      if (mounted) {
+        setSession(data.session || null);
+        setLoading(false);
+      }
+    });
+    const { data: authListener } = supabase.auth.onAuthStateChange((_event, newSession) => {
+      setSession(newSession);
+      setLoading(false);
+    });
+    return () => {
+      mounted = false;
+      authListener.subscription.unsubscribe();
+    };
+  }, []);
+
+  const loadProfile = useCallback(async () => {
+    if (!session?.user?.id) return null;
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('id, email, full_name, avatar_url')
+      .eq('id', session.user.id)
+      .single();
+    if (error) {
+      console.error('Failed to load profile:', error.message);
+      return null;
     }
-  }, [state]);
+    const nextProfile = {
+      id: data.id,
+      email: data.email,
+      fullName: data.full_name || data.email || 'User',
+      avatarUrl: data.avatar_url || '',
+    };
+    setProfile(nextProfile);
+    return nextProfile;
+  }, [session?.user?.id]);
 
-  // Helper functions
-  const createGroup = (name, memberNames, description = '') => {
-    const now = Date.now();
-    const group = {
-      id: crypto.randomUUID(),
-      name,
-      description: description.trim(),
-      members: memberNames.map(name => ({
-        id: crypto.randomUUID(),
+  const loadGroups = useCallback(async () => {
+    if (!session?.user?.id) return [];
+    const { data, error } = await supabase
+      .from('groups')
+      .select(
+        'id, name, description, owner_id, created_at, updated_at, group_members ( user_id, role, profiles ( id, email, full_name ) )'
+      )
+      .order('updated_at', { ascending: false });
+    if (error) {
+      console.error('Failed to load groups:', error.message);
+      return [];
+    }
+    const normalized = (data || []).map(normalizeGroup);
+    setGroups(normalized);
+    return normalized;
+  }, [session?.user?.id]);
+
+  useEffect(() => {
+    if (!session?.user?.id) {
+      setProfile(null);
+      setGroups([]);
+      setExpensesByGroup({});
+      setSettlementsByGroup({});
+      return;
+    }
+    loadProfile();
+    loadGroups();
+  }, [session?.user?.id, loadGroups, loadProfile]);
+
+  const signUp = async (email, password, fullName) => {
+    return supabase.auth.signUp({
+      email,
+      password,
+      options: {
+        data: {
+          full_name: fullName,
+        },
+      },
+    });
+  };
+
+  const signInWithPassword = async (email, password) => {
+    return supabase.auth.signInWithPassword({ email, password });
+  };
+
+  const signInWithGoogle = async () => {
+    return supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        redirectTo: window.location.origin,
+      },
+    });
+  };
+
+  const signOut = async () => {
+    return supabase.auth.signOut();
+  };
+
+  const getGroups = () => groups.slice().sort((a, b) => b.updatedAt - a.updatedAt);
+
+  const getGroup = async (groupId) => {
+    const existing = groups.find((g) => g.id === groupId);
+    if (existing) return existing;
+    const { data, error } = await supabase
+      .from('groups')
+      .select(
+        'id, name, description, owner_id, created_at, updated_at, group_members ( user_id, role, profiles ( id, email, full_name ) )'
+      )
+      .eq('id', groupId)
+      .single();
+    if (error) {
+      console.error('Failed to load group:', error.message);
+      return null;
+    }
+    const normalized = normalizeGroup(data);
+    setGroups((prev) => {
+      const next = prev.filter((g) => g.id !== normalized.id);
+      return [normalized, ...next];
+    });
+    return normalized;
+  };
+
+  const createGroup = async (name, description = '') => {
+    if (!session?.user?.id) throw new Error('Not authenticated');
+    const { data: groupRow, error: groupError } = await supabase
+      .from('groups')
+      .insert({
         name,
-        avatarColor: getAvatarColor(name),
-        createdAt: now,
-      })),
-      createdAt: now,
-      updatedAt: now,
+        description,
+        owner_id: session.user.id,
+      })
+      .select(
+        'id, name, description, owner_id, created_at, updated_at, group_members ( user_id, role, profiles ( id, email, full_name ) )'
+      )
+      .single();
+    if (groupError) throw groupError;
+
+    const { error: memberError } = await supabase.from('group_members').insert({
+      group_id: groupRow.id,
+      user_id: session.user.id,
+      role: 'owner',
+    });
+    if (memberError) throw memberError;
+
+    const normalized = normalizeGroup({
+      ...groupRow,
+      group_members: [
+        {
+          user_id: session.user.id,
+          role: 'owner',
+          profiles: {
+            id: session.user.id,
+            email: profile?.email || session.user.email,
+            full_name: profile?.fullName || session.user.email,
+          },
+        },
+      ],
+    });
+    setGroups((prev) => [normalized, ...prev]);
+    return normalized;
+  };
+
+  const deleteGroup = async (groupId) => {
+    const { error } = await supabase.from('groups').delete().eq('id', groupId);
+    if (error) throw error;
+    setGroups((prev) => prev.filter((g) => g.id !== groupId));
+    setExpensesByGroup((prev) => {
+      const next = { ...prev };
+      delete next[groupId];
+      return next;
+    });
+    setSettlementsByGroup((prev) => {
+      const next = { ...prev };
+      delete next[groupId];
+      return next;
+    });
+  };
+
+  const addMemberByEmail = async (groupId, email) => {
+    const { data, error } = await supabase.rpc('find_profile_by_email', { email_input: email });
+    if (error) throw error;
+    if (!data || data.length === 0) {
+      throw new Error('No user found with that email.');
+    }
+    const userId = data[0].id;
+    const { error: insertError } = await supabase.from('group_members').insert({
+      group_id: groupId,
+      user_id: userId,
+      role: 'member',
+    });
+    if (insertError) throw insertError;
+    await loadGroups();
+    return userId;
+  };
+
+  const removeMember = async (groupId, userId) => {
+    const { error } = await supabase
+      .from('group_members')
+      .delete()
+      .eq('group_id', groupId)
+      .eq('user_id', userId);
+    if (error) throw error;
+    await loadGroups();
+  };
+
+  const getGroupExpenses = useCallback(
+    async (groupId) => {
+      const { data, error } = await supabase
+        .from('expenses')
+        .select('*')
+        .eq('group_id', groupId)
+        .order('created_at', { ascending: false });
+      if (error) {
+        console.error('Failed to load expenses:', error.message);
+        return [];
+      }
+      const normalized = (data || []).map(normalizeExpense);
+      setExpensesByGroup((prev) => ({ ...prev, [groupId]: normalized }));
+      return normalized;
+    },
+    []
+  );
+
+  const getGroupSettlements = useCallback(
+    async (groupId) => {
+      const { data, error } = await supabase
+        .from('settlements')
+        .select('*')
+        .eq('group_id', groupId)
+        .order('created_at', { ascending: false });
+      if (error) {
+        console.error('Failed to load settlements:', error.message);
+        return [];
+      }
+      const normalized = (data || []).map(normalizeSettlement);
+      setSettlementsByGroup((prev) => ({ ...prev, [groupId]: normalized }));
+      return normalized;
+    },
+    []
+  );
+
+  const getTotals = useCallback(async () => {
+    const { count: expenseCount, error: expenseError } = await supabase
+      .from('expenses')
+      .select('id', { count: 'exact', head: true });
+    if (expenseError) {
+      console.error('Failed to count expenses:', expenseError.message);
+    }
+    const { count: settlementCount, error: settlementError } = await supabase
+      .from('settlements')
+      .select('id', { count: 'exact', head: true });
+    if (settlementError) {
+      console.error('Failed to count settlements:', settlementError.message);
+    }
+    return {
+      expenses: expenseCount || 0,
+      settlements: settlementCount || 0,
     };
-    dispatch({ type: ACTIONS.ADD_GROUP, payload: { group } });
-    return group;
+  }, []);
+
+  const createExpense = async (groupId, description, amount, paidBy, splitType, splits) => {
+    if (!session?.user?.id) throw new Error('Not authenticated');
+    const { data, error } = await supabase
+      .from('expenses')
+      .insert({
+        group_id: groupId,
+        description,
+        amount,
+        paid_by: paidBy,
+        split_type: splitType,
+        splits,
+        created_by: session.user.id,
+      })
+      .select('*')
+      .single();
+    if (error) throw error;
+    const normalized = normalizeExpense(data);
+    setExpensesByGroup((prev) => ({
+      ...prev,
+      [groupId]: [normalized, ...(prev[groupId] || [])],
+    }));
+    return normalized;
   };
 
-  const updateGroup = (groupId, updates) => {
-    dispatch({ type: ACTIONS.UPDATE_GROUP, payload: { groupId, updates } });
+  const updateExpense = async (expenseId, updates) => {
+    const { data, error } = await supabase
+      .from('expenses')
+      .update({
+        description: updates.description,
+        amount: updates.amount,
+        paid_by: updates.paidBy,
+        split_type: updates.splitType,
+        splits: updates.splits,
+      })
+      .eq('id', expenseId)
+      .select('*')
+      .single();
+    if (error) throw error;
+    const normalized = normalizeExpense(data);
+    setExpensesByGroup((prev) => {
+      const groupId = normalized.groupId;
+      const current = prev[groupId] || [];
+      const next = current.map((expense) => (expense.id === normalized.id ? normalized : expense));
+      return { ...prev, [groupId]: next };
+    });
+    return normalized;
   };
 
-  const deleteGroup = (groupId) => {
-    dispatch({ type: ACTIONS.DELETE_GROUP, payload: { groupId } });
+  const deleteExpense = async (expenseId, groupId) => {
+    const { error } = await supabase.from('expenses').delete().eq('id', expenseId);
+    if (error) throw error;
+    setExpensesByGroup((prev) => ({
+      ...prev,
+      [groupId]: (prev[groupId] || []).filter((expense) => expense.id !== expenseId),
+    }));
   };
 
-  const addMember = (groupId, name) => {
-    const member = {
-      id: crypto.randomUUID(),
-      name,
-      avatarColor: getAvatarColor(name),
-      createdAt: Date.now(),
-    };
-    dispatch({ type: ACTIONS.ADD_MEMBER, payload: { groupId, member } });
-    return member;
+  const createSettlement = async (groupId, fromMemberId, toMemberId, amount) => {
+    if (!session?.user?.id) throw new Error('Not authenticated');
+    const { data, error } = await supabase
+      .from('settlements')
+      .insert({
+        group_id: groupId,
+        from_user_id: fromMemberId,
+        to_user_id: toMemberId,
+        amount,
+        created_by: session.user.id,
+      })
+      .select('*')
+      .single();
+    if (error) throw error;
+    const normalized = normalizeSettlement(data);
+    setSettlementsByGroup((prev) => ({
+      ...prev,
+      [groupId]: [normalized, ...(prev[groupId] || [])],
+    }));
+    return normalized;
   };
 
-  const removeMember = (groupId, memberId) => {
-    dispatch({ type: ACTIONS.REMOVE_MEMBER, payload: { groupId, memberId } });
+  const deleteSettlement = async (settlementId, groupId) => {
+    const { error } = await supabase.from('settlements').delete().eq('id', settlementId);
+    if (error) throw error;
+    setSettlementsByGroup((prev) => ({
+      ...prev,
+      [groupId]: (prev[groupId] || []).filter((settlement) => settlement.id !== settlementId),
+    }));
   };
 
-  const createExpense = (groupId, description, amount, paidBy, splitType, splits) => {
-    const now = Date.now();
-    const expense = {
-      id: crypto.randomUUID(),
-      groupId,
-      description,
-      amount, // in cents
-      paidBy,
-      splitType,
-      splits,
-      createdAt: now,
-      updatedAt: now,
-    };
-    dispatch({ type: ACTIONS.ADD_EXPENSE, payload: { expense } });
-    return expense;
-  };
-
-  const updateExpense = (expenseId, updates) => {
-    dispatch({ type: ACTIONS.UPDATE_EXPENSE, payload: { expenseId, updates } });
-  };
-
-  const deleteExpense = (expenseId) => {
-    dispatch({ type: ACTIONS.DELETE_EXPENSE, payload: { expenseId } });
-  };
-
-  const createSettlement = (groupId, fromMemberId, toMemberId, amount) => {
-    const settlement = {
-      id: crypto.randomUUID(),
-      groupId,
-      fromMemberId,
-      toMemberId,
-      amount, // in cents
-      createdAt: Date.now(),
-    };
-    dispatch({ type: ACTIONS.ADD_SETTLEMENT, payload: { settlement } });
-    return settlement;
-  };
-
-  const deleteSettlement = (settlementId) => {
-    dispatch({ type: ACTIONS.DELETE_SETTLEMENT, payload: { settlementId } });
-  };
-
-  // Getters
-  const getGroups = () => Object.values(state.groups).sort((a, b) => b.updatedAt - a.updatedAt);
-
-  const getGroup = (groupId) => state.groups[groupId];
-
-  const getGroupExpenses = (groupId) =>
-    Object.values(state.expenses)
-      .filter(e => e.groupId === groupId)
-      .sort((a, b) => b.createdAt - a.createdAt);
-
-  const getGroupSettlements = (groupId) =>
-    Object.values(state.settlements)
-      .filter(s => s.groupId === groupId)
-      .sort((a, b) => b.createdAt - a.createdAt);
-
-  const value = {
-    state,
-    // Group actions
-    createGroup,
-    updateGroup,
-    deleteGroup,
-    addMember,
-    removeMember,
-    // Expense actions
-    createExpense,
-    updateExpense,
-    deleteExpense,
-    // Settlement actions
-    createSettlement,
-    deleteSettlement,
-    // Getters
-    getGroups,
-    getGroup,
-    getGroupExpenses,
-    getGroupSettlements,
-  };
+  const value = useMemo(
+    () => ({
+      session,
+      profile,
+      loading,
+      signUp,
+      signInWithPassword,
+      signInWithGoogle,
+      signOut,
+      getGroups,
+      getGroup,
+      loadGroups,
+      createGroup,
+      deleteGroup,
+      addMemberByEmail,
+      removeMember,
+      getGroupExpenses,
+      getGroupSettlements,
+      getTotals,
+      createExpense,
+      updateExpense,
+      deleteExpense,
+      createSettlement,
+      deleteSettlement,
+      expensesByGroup,
+      settlementsByGroup,
+    }),
+    [
+      session,
+      profile,
+      loading,
+      groups,
+      expensesByGroup,
+      settlementsByGroup,
+      loadGroups,
+      getGroupExpenses,
+      getGroupSettlements,
+      getTotals,
+    ]
+  );
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
 }
 
-// Hook to use the context
 export function useApp() {
   const context = useContext(AppContext);
   if (!context) {
