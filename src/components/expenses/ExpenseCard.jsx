@@ -14,7 +14,7 @@ export function ExpenseCard({ expense, members, onEdit, onDelete }) {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   const payer = members.find((m) => m.id === expense.paidBy);
-  const shares = calculateShares(expense, members);
+  const shares = calculateShares(expense);
 
   return (
     <>
