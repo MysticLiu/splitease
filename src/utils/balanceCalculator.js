@@ -1,9 +1,13 @@
 /**
  * Calculate share amounts based on split type
  */
-export function calculateShares(expense, members) {
+export function calculateShares(expense) {
   const shares = {};
   const includedSplits = expense.splits.filter(s => s.isIncluded);
+
+  if (includedSplits.length === 0) {
+    return shares;
+  }
 
   switch (expense.splitType) {
     case 'equal': {
@@ -30,7 +34,7 @@ export function calculateShares(expense, members) {
       // Handle rounding errors by adjusting first member
       const total = Object.values(shares).reduce((a, b) => a + b, 0);
       const diff = expense.amount - total;
-      if (diff !== 0 && includedSplits.length > 0) {
+      if (diff !== 0) {
         shares[includedSplits[0].memberId] += diff;
       }
       break;
@@ -64,7 +68,7 @@ export function calculateBalances(expenses, settlements, members) {
     balances[payerId] = (balances[payerId] || 0) + expense.amount;
 
     // Calculate what each person owes based on split type
-    const shares = calculateShares(expense, members);
+    const shares = calculateShares(expense);
 
     // Subtract each person's share (including the payer's own share)
     Object.entries(shares).forEach(([memberId, shareAmount]) => {

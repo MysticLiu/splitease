@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ArrowRight } from 'lucide-react';
 import { Modal } from '../ui/Modal';
 import { Button } from '../ui/Button';
@@ -11,6 +11,12 @@ export function SettleUpModal({ isOpen, onClose, debt, members, onConfirm }) {
 
   const fromMember = members.find((m) => m.id === debt?.from);
   const toMember = members.find((m) => m.id === debt?.to);
+
+  useEffect(() => {
+    if (!isOpen) {
+      setAmountStr('');
+    }
+  }, [isOpen]);
 
   // Default to full amount
   const defaultAmount = debt?.amount || 0;

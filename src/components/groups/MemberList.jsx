@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { X, Plus, UserPlus } from 'lucide-react';
+import { X, UserPlus } from 'lucide-react';
 import { Avatar } from '../ui/Avatar';
 import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';

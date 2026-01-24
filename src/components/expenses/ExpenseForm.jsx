@@ -34,7 +34,7 @@ export function ExpenseForm({ members, onSubmit, onCancel, initialData = null })
         }))
       );
     }
-  }, [members, initialData]);
+  }, [initialData, members, splits.length]);
 
   // Set default payer when members change
   useEffect(() => {

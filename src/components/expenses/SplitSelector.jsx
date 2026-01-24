@@ -27,7 +27,7 @@ export function SplitSelector({
         }))
       );
     }
-  }, [members]);
+  }, [members, onSplitsChange, splits.length]);
 
   const handleToggleMember = (memberId) => {
     onSplitsChange(
