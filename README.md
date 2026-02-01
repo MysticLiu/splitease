@@ -34,6 +34,11 @@ Split expenses with friends, roommates, or groups using React + Supabase.
    npm run dev
    ```
 
+## Type checking
+```bash
+npm run typecheck
+```
+
 ## Smoke test checklist
 - Sign up and confirm email
 - Create a group
