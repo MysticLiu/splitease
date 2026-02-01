@@ -6,7 +6,8 @@ import { useApp } from '../../context/AppContext';
 
 export function Header({ title, showBack = false, onBack }) {
   const location = useLocation();
-  const { profile, signOut } = useApp();
+  const { profile, session, signOut } = useApp();
+  const displayName = profile?.fullName || session?.user?.email || 'Account';
 
   return (
     <header className="sticky top-0 z-40 bg-white border-b">
@@ -52,12 +53,15 @@ export function Header({ title, showBack = false, onBack }) {
               />
             </nav>
           )}
-          {profile && (
+          {session && (
             <div className="flex items-center gap-2">
-              <Avatar name={profile.fullName} color="#6366F1" size="xs" />
+              <Avatar name={displayName} color="#6366F1" size="xs" src={profile?.avatarUrl} />
               <span className="hidden sm:inline text-sm text-gray-700 max-w-[120px] truncate">
-                {profile.fullName}
+                {displayName}
               </span>
+              <Link to="/profile" className="text-xs text-gray-500 hover:text-gray-700">
+                Profile
+              </Link>
               <button
                 type="button"
                 onClick={signOut}

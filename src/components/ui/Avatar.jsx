@@ -9,15 +9,27 @@ const sizes = {
   xl: 'w-16 h-16 text-lg',
 };
 
-export function Avatar({ name, color, size = 'md', className }) {
+export function Avatar({ name, color, size = 'md', className, src }) {
   const backgroundColor = color || getAvatarColor(name);
   const initials = getInitials(name);
+  const sizeClass = sizes[size];
+
+  if (src) {
+    return (
+      <img
+        src={src}
+        alt={name}
+        title={name}
+        className={clsx('rounded-full object-cover', sizeClass, className)}
+      />
+    );
+  }
 
   return (
     <div
       className={clsx(
         'inline-flex items-center justify-center rounded-full font-medium text-white',
-        sizes[size],
+        sizeClass,
         className
       )}
       style={{ backgroundColor }}
@@ -39,6 +51,7 @@ export function AvatarGroup({ members, max = 4, size = 'sm' }) {
           key={member.id}
           name={member.name}
           color={member.avatarColor}
+          src={member.avatarUrl}
           size={size}
           className="ring-2 ring-white"
         />

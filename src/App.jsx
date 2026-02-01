@@ -1,6 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate, Outlet } from 'react-router-dom';
 import { AppProvider } from './context/AppContext';
-import { HomePage, GroupsPage, GroupDetailPage, AuthPage } from './pages';
+import { HomePage, GroupsPage, GroupDetailPage, AuthPage, ProfilePage } from './pages';
 import { useApp } from './context/AppContext';
 
 function RequireAuth() {
@@ -9,7 +9,7 @@ function RequireAuth() {
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center text-gray-500">
-        Loading…
+        Loading...
       </div>
     );
   }
@@ -31,6 +31,7 @@ function App() {
             <Route path="/" element={<HomePage />} />
             <Route path="/groups" element={<GroupsPage />} />
             <Route path="/groups/:groupId" element={<GroupDetailPage />} />
+            <Route path="/profile" element={<ProfilePage />} />
           </Route>
         </Routes>
       </BrowserRouter>

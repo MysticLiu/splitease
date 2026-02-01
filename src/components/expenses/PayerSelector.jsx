@@ -20,6 +20,7 @@ export function PayerSelector({ members, value, onChange, label = 'Paid by' }) {
             name={selectedMember.name}
             color={selectedMember.avatarColor}
             size="md"
+            src={selectedMember.avatarUrl}
           />
         )}
         <Select

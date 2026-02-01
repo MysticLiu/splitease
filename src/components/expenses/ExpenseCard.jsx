@@ -70,7 +70,12 @@ export function ExpenseCard({ expense, members, onEdit, onDelete }) {
                         className="flex items-center justify-between py-1"
                       >
                         <div className="flex items-center gap-2">
-                          <Avatar name={member.name} color={member.avatarColor} size="xs" />
+                          <Avatar
+                            name={member.name}
+                            color={member.avatarColor}
+                            size="xs"
+                            src={member.avatarUrl}
+                          />
                           <span className="text-sm text-gray-700">{member.name}</span>
                         </div>
                         <span

@@ -14,6 +14,8 @@ const mapMember = (memberRow) => {
     name,
     email: profile.email || '',
     role: memberRow.role,
+    isActive: memberRow.is_active !== false,
+    avatarUrl: profile.avatar_url || '',
     avatarColor: getAvatarColor(name),
   };
 };
@@ -49,12 +51,23 @@ const normalizeSettlement = (row) => ({
   createdAt: toTimestamp(row.created_at),
 });
 
+const normalizeInvite = (row) => ({
+  id: row.id,
+  groupId: row.group_id,
+  email: row.email,
+  status: row.status,
+  invitedBy: row.invited_by,
+  createdAt: toTimestamp(row.created_at),
+  acceptedAt: toTimestamp(row.accepted_at),
+});
+
 export function AppProvider({ children }) {
   const [session, setSession] = useState(null);
   const [profile, setProfile] = useState(null);
   const [groups, setGroups] = useState([]);
   const [expensesByGroup, setExpensesByGroup] = useState({});
   const [settlementsByGroup, setSettlementsByGroup] = useState({});
+  const [invitesByGroup, setInvitesByGroup] = useState({});
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -101,7 +114,7 @@ export function AppProvider({ children }) {
     const { data, error } = await supabase
       .from('groups')
       .select(
-        'id, name, description, owner_id, created_at, updated_at, group_members ( user_id, role, profiles!group_members_user_id_fkey ( id, email, full_name ) )'
+        'id, name, description, owner_id, created_at, updated_at, group_members ( user_id, role, is_active, profiles!group_members_user_id_fkey ( id, email, full_name, avatar_url ) )'
       )
       .order('updated_at', { ascending: false });
     if (error) {
@@ -119,6 +132,7 @@ export function AppProvider({ children }) {
       setGroups([]);
       setExpensesByGroup({});
       setSettlementsByGroup({});
+      setInvitesByGroup({});
       return;
     }
     loadProfile();
@@ -162,7 +176,7 @@ export function AppProvider({ children }) {
     const { data, error } = await supabase
       .from('groups')
       .select(
-        'id, name, description, owner_id, created_at, updated_at, group_members ( user_id, role, profiles!group_members_user_id_fkey ( id, email, full_name ) )'
+        'id, name, description, owner_id, created_at, updated_at, group_members ( user_id, role, is_active, profiles!group_members_user_id_fkey ( id, email, full_name, avatar_url ) )'
       )
       .eq('id', groupId)
       .single();
@@ -180,36 +194,36 @@ export function AppProvider({ children }) {
 
   const createGroup = async (name, description = '') => {
     if (!session?.user?.id) throw new Error('Not authenticated');
-    const { data: groupRow, error: groupError } = await supabase
-      .from('groups')
-      .insert({
-        name,
-        description,
-        owner_id: session.user.id,
+    const { data, error } = await supabase
+      .rpc('create_group_with_owner', {
+        name_input: name?.trim(),
+        description_input: description?.trim() || '',
       })
-      .select(
-        'id, name, description, owner_id, created_at, updated_at, group_members ( user_id, role, profiles!group_members_user_id_fkey ( id, email, full_name ) )'
-      )
       .single();
-    if (groupError) throw groupError;
+    if (error) throw error;
 
-    const { error: memberError } = await supabase.from('group_members').insert({
-      group_id: groupRow.id,
-      user_id: session.user.id,
-      role: 'owner',
-    });
-    if (memberError) throw memberError;
+    if (!data?.id) {
+      throw new Error('Failed to create group.');
+    }
+
+    const groupId = data.id;
+    if (groupId) {
+      const hydrated = await getGroup(groupId);
+      if (hydrated) return hydrated;
+    }
 
     const normalized = normalizeGroup({
-      ...groupRow,
+      ...data,
       group_members: [
         {
           user_id: session.user.id,
           role: 'owner',
+          is_active: true,
           profiles: {
             id: session.user.id,
             email: profile?.email || session.user.email,
             full_name: profile?.fullName || session.user.email,
+            avatar_url: profile?.avatarUrl || '',
           },
         },
       ],
@@ -234,31 +248,96 @@ export function AppProvider({ children }) {
     });
   };
 
-  const addMemberByEmail = async (groupId, email) => {
-    const { data, error } = await supabase.rpc('find_profile_by_email', { email_input: email });
-    if (error) throw error;
-    if (!data || data.length === 0) {
-      throw new Error('No user found with that email.');
+  const getGroupInvites = useCallback(async (groupId) => {
+    const { data, error } = await supabase
+      .from('group_invites')
+      .select('*')
+      .eq('group_id', groupId)
+      .order('created_at', { ascending: false });
+    if (error) {
+      console.error('Failed to load invites:', error.message);
+      return [];
     }
-    const userId = data[0].id;
-    const { error: insertError } = await supabase.from('group_members').insert({
-      group_id: groupId,
-      user_id: userId,
-      role: 'member',
+    const normalized = (data || []).map(normalizeInvite);
+    setInvitesByGroup((prev) => ({ ...prev, [groupId]: normalized }));
+    return normalized;
+  }, []);
+
+  const addMemberByEmail = async (groupId, email) => {
+    const { data, error } = await supabase.rpc('create_group_invite', {
+      group_id_input: groupId,
+      email_input: email,
     });
-    if (insertError) throw insertError;
-    await loadGroups();
-    return userId;
+    if (error) throw error;
+    const status = data?.[0]?.status || 'pending';
+    let group = null;
+    if (status === 'member_added') {
+      const updated = await loadGroups();
+      group = updated.find((g) => g.id === groupId) || null;
+    }
+    await getGroupInvites(groupId);
+    return { status, group };
   };
 
   const removeMember = async (groupId, userId) => {
     const { error } = await supabase
       .from('group_members')
-      .delete()
+      .update({
+        is_active: false,
+        removed_at: new Date().toISOString(),
+      })
       .eq('group_id', groupId)
       .eq('user_id', userId);
     if (error) throw error;
-    await loadGroups();
+    const updated = await loadGroups();
+    return updated.find((group) => group.id === groupId) || null;
+  };
+
+  const deleteInvite = async (inviteId, groupId) => {
+    const { error } = await supabase.from('group_invites').delete().eq('id', inviteId);
+    if (error) throw error;
+    setInvitesByGroup((prev) => ({
+      ...prev,
+      [groupId]: (prev[groupId] || []).filter((invite) => invite.id !== inviteId),
+    }));
+  };
+
+  const updateProfile = async ({ fullName, avatarUrl }) => {
+    if (!session?.user?.id) throw new Error('Not authenticated');
+    const { data, error } = await supabase
+      .from('profiles')
+      .update({
+        full_name: fullName,
+        avatar_url: avatarUrl,
+      })
+      .eq('id', session.user.id)
+      .select('id, email, full_name, avatar_url')
+      .single();
+    if (error) throw error;
+    const nextProfile = {
+      id: data.id,
+      email: data.email,
+      fullName: data.full_name || data.email || 'User',
+      avatarUrl: data.avatar_url || '',
+    };
+    setProfile(nextProfile);
+    setGroups((prev) =>
+      prev.map((group) => ({
+        ...group,
+        members: group.members.map((member) =>
+          member.id === session.user.id
+            ? {
+                ...member,
+                name: nextProfile.fullName,
+                email: nextProfile.email,
+                avatarUrl: nextProfile.avatarUrl,
+                avatarColor: getAvatarColor(nextProfile.fullName),
+              }
+            : member
+        ),
+      }))
+    );
+    return nextProfile;
   };
 
   const getGroupExpenses = useCallback(
@@ -420,9 +499,12 @@ export function AppProvider({ children }) {
       deleteGroup,
       addMemberByEmail,
       removeMember,
+      getGroupInvites,
+      deleteInvite,
       getGroupExpenses,
       getGroupSettlements,
       getTotals,
+      updateProfile,
       createExpense,
       updateExpense,
       deleteExpense,
@@ -430,6 +512,7 @@ export function AppProvider({ children }) {
       deleteSettlement,
       expensesByGroup,
       settlementsByGroup,
+      invitesByGroup,
     }),
     [
       session,
@@ -438,7 +521,9 @@ export function AppProvider({ children }) {
       groups,
       expensesByGroup,
       settlementsByGroup,
+      invitesByGroup,
       loadGroups,
+      getGroupInvites,
       getGroupExpenses,
       getGroupSettlements,
       getTotals,

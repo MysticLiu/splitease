@@ -18,6 +18,7 @@ export function GroupCard({ group }) {
     getGroupExpenses(group.id);
     getGroupSettlements(group.id);
   }, [group.id, getGroupExpenses, getGroupSettlements]);
+  const activeMembers = group.members.filter((member) => member.isActive);
   const balances = calculateBalances(expenses, settlements, group.members);
   const totalOwed = getTotalOwed(balances);
 
@@ -39,10 +40,10 @@ export function GroupCard({ group }) {
           )}
 
           <div className="flex items-center gap-4 mt-2">
-            <AvatarGroup members={group.members} max={4} size="sm" />
+            <AvatarGroup members={activeMembers} max={4} size="sm" />
             <span className="text-sm text-gray-500 flex items-center gap-1">
               <Users className="w-4 h-4" />
-              {group.members.length}
+              {activeMembers.length}
             </span>
           </div>
 

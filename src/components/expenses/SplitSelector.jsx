@@ -15,20 +15,6 @@ export function SplitSelector({
   onSplitsChange,
   error,
 }) {
-  // Initialize splits when members change
-  useEffect(() => {
-    if (splits.length === 0 && members.length > 0) {
-      onSplitsChange(
-        members.map((m) => ({
-          memberId: m.id,
-          amount: 0,
-          percentage: 100 / members.length,
-          isIncluded: true,
-        }))
-      );
-    }
-  }, [members, onSplitsChange, splits.length]);
-
   const handleToggleMember = (memberId) => {
     onSplitsChange(
       splits.map((s) =>
@@ -107,7 +93,6 @@ export function SplitSelector({
                 split={split}
                 splitType={splitType}
                 perPersonAmount={perPersonAmount}
-                totalAmount={totalAmount}
                 onToggle={() => handleToggleMember(member.id)}
                 onAmountChange={(val) => handleAmountChange(member.id, val)}
                 onPercentageChange={(val) => handlePercentageChange(member.id, val)}
@@ -133,7 +118,6 @@ function MemberSplitRow({
   split,
   splitType,
   perPersonAmount,
-  totalAmount,
   onToggle,
   onAmountChange,
   onPercentageChange,
@@ -178,7 +162,12 @@ function MemberSplitRow({
       )}
 
       {/* Member info */}
-      <Avatar name={member.name} color={member.avatarColor} size="sm" />
+      <Avatar
+        name={member.name}
+        color={member.avatarColor}
+        size="sm"
+        src={member.avatarUrl}
+      />
       <span className="flex-1 text-sm font-medium text-gray-900">{member.name}</span>
 
       {/* Amount display/input */}

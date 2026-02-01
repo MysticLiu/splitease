@@ -22,23 +22,27 @@ export function ExpenseForm({ members, onSubmit, onCancel, initialData = null })
   const [splits, setSplits] = useState(initialData?.splits || []);
   const [errors, setErrors] = useState({});
 
-  // Initialize splits for all members when component mounts
   useEffect(() => {
-    if (!initialData && members.length > 0 && splits.length === 0) {
-      setSplits(
-        members.map((m) => ({
-          memberId: m.id,
+    if (members.length === 0) return;
+    const includeDefault = !initialData;
+    const defaultPercentage = Math.round((100 / members.length) * 100) / 100;
+    setSplits((prev) => {
+      const map = new Map(prev.map((s) => [s.memberId, s]));
+      return members.map((member) =>
+        map.get(member.id) || {
+          memberId: member.id,
           amount: 0,
-          percentage: Math.round((100 / members.length) * 100) / 100,
-          isIncluded: true,
-        }))
+          percentage: defaultPercentage,
+          isIncluded: includeDefault,
+        }
       );
-    }
-  }, [initialData, members, splits.length]);
+    });
+  }, [members, initialData]);
 
   // Set default payer when members change
   useEffect(() => {
-    if (!paidBy && members.length > 0) {
+    if (!members.length) return;
+    if (!paidBy || !members.some((m) => m.id === paidBy)) {
       setPaidBy(members[0].id);
     }
   }, [members, paidBy]);

@@ -11,7 +11,12 @@ export function BalanceCard({ member, balance }) {
   return (
     <div className="flex items-center justify-between p-3 bg-white rounded-lg border">
       <div className="flex items-center gap-3">
-        <Avatar name={member.name} color={member.avatarColor} size="md" />
+        <Avatar
+          name={member.name}
+          color={member.avatarColor}
+          size="md"
+          src={member.avatarUrl}
+        />
         <span className="font-medium text-gray-900">{member.name}</span>
       </div>
 

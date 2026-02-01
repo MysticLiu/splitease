@@ -24,7 +24,7 @@ export function BalanceSummary({ members, balances }) {
         </div>
         {totalOwed === 0 && (
           <div className="text-4xl">
-            ✓
+            OK
           </div>
         )}
       </div>

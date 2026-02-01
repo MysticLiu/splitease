@@ -52,7 +52,12 @@ export function MemberList({
             className="flex items-center justify-between p-2 bg-gray-50 rounded-lg"
           >
             <div className="flex items-center gap-3">
-              <Avatar name={member.name} color={member.avatarColor} size="sm" />
+              <Avatar
+                name={member.name}
+                color={member.avatarColor}
+                size="sm"
+                src={member.avatarUrl}
+              />
               <span className="text-sm font-medium text-gray-900">{member.name}</span>
             </div>
             {editable && onRemove && members.length > 2 && (
@@ -111,7 +116,12 @@ export function MemberListDisplay({ members }) {
           key={member.id}
           className="flex items-center gap-2 px-2 py-1 bg-gray-100 rounded-full"
         >
-          <Avatar name={member.name} color={member.avatarColor} size="xs" />
+          <Avatar
+            name={member.name}
+            color={member.avatarColor}
+            size="xs"
+            src={member.avatarUrl}
+          />
           <span className="text-xs font-medium text-gray-700">{member.name}</span>
         </div>
       ))}

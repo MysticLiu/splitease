@@ -8,9 +8,12 @@ import { Modal } from '../components/ui/Modal';
 import { Card, CardContent } from '../components/ui/Card';
 import { ExpenseList } from '../components/expenses/ExpenseList';
 import { ExpenseForm } from '../components/expenses/ExpenseForm';
-import { BalanceSummary } from '../components/balances/BalanceSummary';
-import { DebtList } from '../components/balances/DebtList';
-import { SettleUpModal } from '../components/balances/SettleUpModal';
+import {
+  BalanceSummary,
+  DebtList,
+  SettlementHistory,
+  SettleUpModal,
+} from '../components/balances';
 import { MemberListDisplay } from '../components/groups/MemberList';
 import { GroupMembersManager } from '../components/groups/GroupMembersManager';
 import { useApp } from '../context/AppContext';
@@ -29,11 +32,15 @@ export function GroupDetailPage() {
     updateExpense,
     deleteExpense,
     createSettlement,
+    deleteSettlement,
     addMemberByEmail,
     removeMember,
+    getGroupInvites,
+    deleteInvite,
     deleteGroup,
     expensesByGroup,
     settlementsByGroup,
+    invitesByGroup,
   } = useApp();
 
   const [activeTab, setActiveTab] = useState('expenses');
@@ -48,28 +55,34 @@ export function GroupDetailPage() {
 
   const expenses = expensesByGroup[groupId] || [];
   const settlements = settlementsByGroup[groupId] || [];
+  const invites = invitesByGroup[groupId] || [];
 
   useEffect(() => {
     let mounted = true;
-    setLoadingGroup(true);
-    setActionError(null);
-    Promise.all([getGroup(groupId), getGroupExpenses(groupId), getGroupSettlements(groupId)])
-      .then(([groupData]) => {
-        if (mounted) {
-          setGroup(groupData);
-          setLoadingGroup(false);
-        }
-      })
-      .catch((error) => {
-        if (mounted) {
-          setActionError(error.message || 'Failed to load group.');
-          setLoadingGroup(false);
-        }
-      });
+    const loadGroup = async () => {
+      setLoadingGroup(true);
+      setActionError(null);
+      const groupData = await getGroup(groupId);
+      if (!mounted) return;
+      if (!groupData) {
+        setActionError('Failed to load group.');
+        setLoadingGroup(false);
+        return;
+      }
+      setGroup(groupData);
+      setLoadingGroup(false);
+
+      // Load related data without blocking the main view.
+      getGroupExpenses(groupId);
+      getGroupSettlements(groupId);
+      getGroupInvites(groupId);
+    };
+
+    loadGroup();
     return () => {
       mounted = false;
     };
-  }, [groupId, getGroup, getGroupExpenses, getGroupSettlements]);
+  }, [groupId, getGroup, getGroupExpenses, getGroupSettlements, getGroupInvites]);
 
   const balances = useMemo(() => {
     if (!group) return {};
@@ -83,7 +96,7 @@ export function GroupDetailPage() {
       <div className="min-h-screen bg-gray-50">
         <Header showBack onBack={() => navigate('/')} />
         <PageContainer>
-          <div className="text-center py-12 text-gray-500">Loading group…</div>
+          <div className="text-center py-12 text-gray-500">Loading group...</div>
         </PageContainer>
       </div>
     );
@@ -103,6 +116,8 @@ export function GroupDetailPage() {
       </div>
     );
   }
+
+  const activeMembers = group.members.filter((member) => member.isActive);
 
   const handleAddExpense = async (data) => {
     setActionError(null);
@@ -148,6 +163,15 @@ export function GroupDetailPage() {
     }
   };
 
+  const handleDeleteSettlement = async (settlementId) => {
+    setActionError(null);
+    try {
+      await deleteSettlement(settlementId, groupId);
+    } catch (error) {
+      setActionError(error.message || 'Failed to delete settlement.');
+    }
+  };
+
   const handleDeleteGroup = async () => {
     setActionError(null);
     try {
@@ -171,7 +195,7 @@ export function GroupDetailPage() {
                 {group.description && (
                   <p className="text-sm text-gray-600 mb-3">{group.description}</p>
                 )}
-                <MemberListDisplay members={group.members} />
+                <MemberListDisplay members={activeMembers} />
               </div>
               <Button
                 variant="ghost"
@@ -205,6 +229,10 @@ export function GroupDetailPage() {
           </TabButton>
         </div>
 
+        {actionError && (
+          <p className="mb-4 text-sm text-red-600">{actionError}</p>
+        )}
+
         {activeTab === 'expenses' && (
           <div>
             <div className="flex justify-end mb-4">
@@ -213,9 +241,6 @@ export function GroupDetailPage() {
                 Add Expense
               </Button>
             </div>
-            {actionError && (
-              <p className="mb-3 text-sm text-red-600">{actionError}</p>
-            )}
             <ExpenseList
               expenses={expenses}
               members={group.members}
@@ -230,11 +255,18 @@ export function GroupDetailPage() {
         )}
 
         {activeTab === 'settle' && (
-          <DebtList
-            debts={debts}
-            members={group.members}
-            onSettle={(debt) => setSettlingDebt(debt)}
-          />
+          <div className="space-y-6">
+            <DebtList
+              debts={debts}
+              members={group.members}
+              onSettle={(debt) => setSettlingDebt(debt)}
+            />
+            <SettlementHistory
+              settlements={settlements}
+              members={group.members}
+              onDelete={handleDeleteSettlement}
+            />
+          </div>
         )}
       </PageContainer>
 
@@ -245,7 +277,7 @@ export function GroupDetailPage() {
         size="lg"
       >
         <ExpenseForm
-          members={group.members}
+          members={activeMembers}
           onSubmit={handleAddExpense}
           onCancel={() => setShowExpenseModal(false)}
         />
@@ -285,16 +317,28 @@ export function GroupDetailPage() {
           <div>
             <h4 className="font-medium text-gray-900 mb-2">Members</h4>
             <GroupMembersManager
-              members={group.members}
+              members={activeMembers}
+              invites={invites}
               ownerId={group.ownerId}
               currentUserId={session?.user?.id}
-              onAdd={(email) => addMemberByEmail(groupId, email)}
+              onAdd={async (email) => {
+                const result = await addMemberByEmail(groupId, email);
+                if (result.status === 'member_added') {
+                  if (!result.group) throw new Error('Unable to refresh group members.');
+                  setGroup(result.group);
+                }
+                return result;
+              }}
               onRemove={async (memberId) => {
-                await removeMember(groupId, memberId);
+                const updated = await removeMember(groupId, memberId);
                 if (memberId === session?.user?.id) {
                   navigate('/groups');
+                  return;
                 }
+                if (!updated) throw new Error('Unable to refresh group members.');
+                setGroup(updated);
               }}
+              onRemoveInvite={(inviteId) => deleteInvite(inviteId, groupId)}
             />
             <p className="text-xs text-gray-500 mt-2">
               Members can be added or removed at any time.

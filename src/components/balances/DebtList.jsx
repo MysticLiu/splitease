@@ -34,7 +34,12 @@ export function DebtList({ debts, members, onSettle }) {
           >
             {/* From member */}
             <div className="flex items-center gap-2 min-w-0">
-              <Avatar name={fromMember.name} color={fromMember.avatarColor} size="sm" />
+              <Avatar
+                name={fromMember.name}
+                color={fromMember.avatarColor}
+                size="sm"
+                src={fromMember.avatarUrl}
+              />
               <span className="text-sm font-medium text-gray-900 truncate">
                 {fromMember.name}
               </span>
@@ -51,7 +56,12 @@ export function DebtList({ debts, members, onSettle }) {
 
             {/* To member */}
             <div className="flex items-center gap-2 min-w-0">
-              <Avatar name={toMember.name} color={toMember.avatarColor} size="sm" />
+              <Avatar
+                name={toMember.name}
+                color={toMember.avatarColor}
+                size="sm"
+                src={toMember.avatarUrl}
+              />
               <span className="text-sm font-medium text-gray-900 truncate">
                 {toMember.name}
               </span>

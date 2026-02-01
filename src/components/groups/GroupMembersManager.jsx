@@ -3,11 +3,24 @@ import { X, UserPlus } from 'lucide-react';
 import { Avatar } from '../ui/Avatar';
 import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
+import { formatRelativeTime } from '../../utils/formatters';
 
-export function GroupMembersManager({ members, ownerId, currentUserId, onAdd, onRemove }) {
+export function GroupMembersManager({
+  members,
+  invites = [],
+  ownerId,
+  currentUserId,
+  onAdd,
+  onRemove,
+  onRemoveInvite,
+}) {
   const [email, setEmail] = useState('');
   const [error, setError] = useState(null);
+  const [info, setInfo] = useState(null);
   const [loading, setLoading] = useState(false);
+  const currentRole = members.find((member) => member.id === currentUserId)?.role;
+  const canManage = currentUserId && (currentUserId === ownerId || currentRole === 'admin');
+  const pendingInvites = invites.filter((invite) => invite.status === 'pending');
 
   const handleAdd = async () => {
     const trimmed = email.trim();
@@ -21,9 +34,15 @@ export function GroupMembersManager({ members, ownerId, currentUserId, onAdd, on
     }
     setLoading(true);
     setError(null);
+    setInfo(null);
     try {
-      await onAdd(trimmed);
+      const result = await onAdd(trimmed);
       setEmail('');
+      if (result?.status === 'member_added') {
+        setInfo('Member added.');
+      } else {
+        setInfo('Invite sent.');
+      }
     } catch (err) {
       setError(err.message || 'Unable to add member.');
     } finally {
@@ -55,7 +74,12 @@ export function GroupMembersManager({ members, ownerId, currentUserId, onAdd, on
               className="flex items-center justify-between p-2 bg-gray-50 rounded-lg"
             >
               <div className="flex items-center gap-3">
-                <Avatar name={member.name} color={member.avatarColor} size="sm" />
+                <Avatar
+                  name={member.name}
+                  color={member.avatarColor}
+                  size="sm"
+                  src={member.avatarUrl}
+                />
                 <div>
                   <span className="text-sm font-medium text-gray-900">{member.name}</span>
                   <p className="text-xs text-gray-500">{member.email}</p>
@@ -67,7 +91,7 @@ export function GroupMembersManager({ members, ownerId, currentUserId, onAdd, on
                   <span className="text-xs text-gray-500">You</span>
                 )}
               </div>
-              {!isOwner && (
+              {canManage && !isOwner && (
                 <button
                   type="button"
                   onClick={() => handleRemove(member.id)}
@@ -83,28 +107,60 @@ export function GroupMembersManager({ members, ownerId, currentUserId, onAdd, on
         })}
       </div>
 
-      <div className="flex gap-2">
-        <Input
-          placeholder="Add member email"
-          type="email"
-          value={email}
+      {canManage && (
+        <div className="flex gap-2">
+          <Input
+            placeholder="Add member email"
+            type="email"
+            value={email}
           onChange={(e) => {
             setEmail(e.target.value);
             setError(null);
+            setInfo(null);
           }}
-          className="flex-1"
-        />
-        <Button
-          type="button"
-          onClick={handleAdd}
-          variant="secondary"
-          className="shrink-0"
-          disabled={loading}
-        >
-          <UserPlus className="w-4 h-4" />
-        </Button>
-      </div>
+            className="flex-1"
+          />
+          <Button
+            type="button"
+            onClick={handleAdd}
+            variant="secondary"
+            className="shrink-0"
+            disabled={loading}
+          >
+            <UserPlus className="w-4 h-4" />
+          </Button>
+        </div>
+      )}
 
+      {pendingInvites.length > 0 && (
+        <div className="space-y-2 pt-2 border-t">
+          <p className="text-xs text-gray-500">Pending invites</p>
+          {pendingInvites.map((invite) => (
+            <div
+              key={invite.id}
+              className="flex items-center justify-between text-sm text-gray-700"
+            >
+              <span>{invite.email}</span>
+              <div className="flex items-center gap-3">
+                <span className="text-xs text-gray-400">
+                  {formatRelativeTime(invite.createdAt)}
+                </span>
+                {onRemoveInvite && canManage && (
+                  <button
+                    type="button"
+                    className="text-xs text-red-500 hover:text-red-600"
+                    onClick={() => onRemoveInvite(invite.id)}
+                  >
+                    Revoke
+                  </button>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {info && <p className="text-sm text-emerald-600">{info}</p>}
       {error && <p className="text-sm text-red-600">{error}</p>}
     </div>
   );

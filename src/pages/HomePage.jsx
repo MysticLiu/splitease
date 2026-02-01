@@ -11,7 +11,7 @@ import { useApp } from '../context/AppContext';
 
 export function HomePage() {
   const navigate = useNavigate();
-  const { getGroups, createGroup, getTotals } = useApp();
+  const { getGroups, createGroup, getTotals, expensesByGroup, settlementsByGroup } = useApp();
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [createError, setCreateError] = useState(null);
   const [stats, setStats] = useState({ expenses: 0, settlements: 0 });
@@ -26,7 +26,7 @@ export function HomePage() {
     return () => {
       mounted = false;
     };
-  }, [getTotals]);
+  }, [getTotals, expensesByGroup, settlementsByGroup]);
 
   const handleCreateGroup = async ({ name, description }) => {
     setCreateError(null);

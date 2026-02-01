@@ -40,7 +40,12 @@ export function SettleUpModal({ isOpen, onClose, debt, members, onConfirm }) {
         {/* Visual representation */}
         <div className="flex items-center justify-center gap-4 py-4">
           <div className="text-center">
-            <Avatar name={fromMember.name} color={fromMember.avatarColor} size="lg" />
+            <Avatar
+              name={fromMember.name}
+              color={fromMember.avatarColor}
+              size="lg"
+              src={fromMember.avatarUrl}
+            />
             <p className="mt-2 text-sm font-medium text-gray-900">{fromMember.name}</p>
           </div>
 
@@ -52,7 +57,12 @@ export function SettleUpModal({ isOpen, onClose, debt, members, onConfirm }) {
           </div>
 
           <div className="text-center">
-            <Avatar name={toMember.name} color={toMember.avatarColor} size="lg" />
+            <Avatar
+              name={toMember.name}
+              color={toMember.avatarColor}
+              size="lg"
+              src={toMember.avatarUrl}
+            />
             <p className="mt-2 text-sm font-medium text-gray-900">{toMember.name}</p>
           </div>
         </div>
