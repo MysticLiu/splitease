@@ -21,13 +21,14 @@ export function calculateShares(expense) {
       break;
     }
 
-    case 'custom':
+    case 'custom': {
       includedSplits.forEach(split => {
         shares[split.memberId] = split.amount || 0;
       });
       break;
+    }
 
-    case 'percentage':
+    case 'percentage': {
       includedSplits.forEach(split => {
         shares[split.memberId] = Math.round(expense.amount * (split.percentage || 0) / 100);
       });
@@ -38,6 +39,7 @@ export function calculateShares(expense) {
         shares[includedSplits[0].memberId] += diff;
       }
       break;
+    }
 
     default:
       break;

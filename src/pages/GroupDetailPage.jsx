@@ -370,8 +370,8 @@ export function GroupDetailPage() {
         size="sm"
       >
         <p className="text-gray-600 mb-4">
-          Are you sure you want to delete "{group.name}"? This will permanently delete all
-          expenses and settlements. This action cannot be undone.
+          Are you sure you want to delete &quot;{group.name}&quot;? This will permanently
+          delete all expenses and settlements. This action cannot be undone.
         </p>
         <div className="flex gap-3">
           <Button

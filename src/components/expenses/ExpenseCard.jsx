@@ -134,8 +134,8 @@ export function ExpenseCard({ expense, members, onEdit, onDelete }) {
         size="sm"
       >
         <p className="text-gray-600 mb-4">
-          Are you sure you want to delete "{expense.description}"? This will recalculate all
-          balances and cannot be undone.
+          Are you sure you want to delete &quot;{expense.description}&quot;? This will
+          recalculate all balances and cannot be undone.
         </p>
         <div className="flex gap-3">
           <Button
