@@ -220,6 +220,7 @@ export function GroupDetailPage() {
                 variant="ghost"
                 size="sm"
                 onClick={() => setShowSettingsModal(true)}
+                aria-label="Open group settings"
               >
                 <Settings className="w-4 h-4" />
               </Button>

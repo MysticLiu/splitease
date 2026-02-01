@@ -138,6 +138,7 @@ export function GroupMembersManager({
             variant="secondary"
             className="shrink-0"
             disabled={loading}
+            aria-label="Add member"
           >
             <UserPlus className="w-4 h-4" />
           </Button>

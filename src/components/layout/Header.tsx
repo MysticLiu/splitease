@@ -24,6 +24,7 @@ export function Header({ title, showBack = false, onBack }: HeaderProps) {
           {showBack ? (
             <button
               onClick={onBack}
+              aria-label="Go back"
               className="p-2 -ml-2 text-gray-600 hover:text-gray-900 rounded-lg hover:bg-gray-100 transition-colors"
             >
               <ArrowLeft className="w-5 h-5" />

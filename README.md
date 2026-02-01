@@ -39,6 +39,20 @@ Split expenses with friends, roommates, or groups using React + Supabase.
 npm run typecheck
 ```
 
+## E2E tests (Playwright)
+1. Install browsers:
+   ```bash
+   npx playwright install
+   ```
+2. Create `.env.e2e` (copy from `.env.e2e.example`) and fill in:
+   - `E2E_EMAIL` / `E2E_PASSWORD` for an existing confirmed user
+   - Optional: `E2E_MEMBER_EMAIL` for an existing second user (tests member add + settle)
+   - Optional: `E2E_ALLOW_SIGNUP=true` to run the signup test
+3. Run:
+   ```bash
+   npm run test:e2e
+   ```
+
 ## Smoke test checklist
 - Sign up and confirm email
 - Create a group
