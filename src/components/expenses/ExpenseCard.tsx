@@ -14,10 +14,17 @@ type ExpenseCardProps = {
   expense: Expense;
   members: Member[];
   onEdit: (expense: Expense) => void;
-  onDelete: (expenseId: string) => void;
+  onDelete: (expenseId: string) => Promise<void> | void;
+  deleting?: boolean;
 };
 
-export function ExpenseCard({ expense, members, onEdit, onDelete }: ExpenseCardProps) {
+export function ExpenseCard({
+  expense,
+  members,
+  onEdit,
+  onDelete,
+  deleting = false,
+}: ExpenseCardProps) {
   const [expanded, setExpanded] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
@@ -111,6 +118,7 @@ export function ExpenseCard({ expense, members, onEdit, onDelete }: ExpenseCardP
                       onEdit(expense);
                     }}
                     className="flex-1"
+                    disabled={deleting}
                   >
                     <Pencil className="w-4 h-4 mr-1" />
                     Edit
@@ -123,6 +131,7 @@ export function ExpenseCard({ expense, members, onEdit, onDelete }: ExpenseCardP
                       setShowDeleteConfirm(true);
                     }}
                     className="flex-1 text-red-600 hover:text-red-700 hover:bg-red-50"
+                    disabled={deleting}
                   >
                     <Trash2 className="w-4 h-4 mr-1" />
                     Delete
@@ -137,7 +146,9 @@ export function ExpenseCard({ expense, members, onEdit, onDelete }: ExpenseCardP
       {/* Delete confirmation modal */}
       <Modal
         isOpen={showDeleteConfirm}
-        onClose={() => setShowDeleteConfirm(false)}
+        onClose={() => {
+          if (!deleting) setShowDeleteConfirm(false);
+        }}
         title="Delete Expense"
         size="sm"
       >
@@ -150,18 +161,20 @@ export function ExpenseCard({ expense, members, onEdit, onDelete }: ExpenseCardP
             variant="secondary"
             onClick={() => setShowDeleteConfirm(false)}
             className="flex-1"
+            disabled={deleting}
           >
             Cancel
           </Button>
           <Button
             variant="danger"
-            onClick={() => {
-              onDelete(expense.id);
+            onClick={async () => {
+              await onDelete(expense.id);
               setShowDeleteConfirm(false);
             }}
             className="flex-1"
+            disabled={deleting}
           >
-            Delete
+            {deleting ? 'Deleting...' : 'Delete'}
           </Button>
         </div>
       </Modal>

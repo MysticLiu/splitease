@@ -6,22 +6,32 @@ import type { Member, Settlement } from '../../types';
 type SettlementHistoryProps = {
   settlements: Settlement[];
   members: Member[];
-  onDelete?: (id: string) => void;
+  onDelete?: (id: string) => Promise<void> | void;
+  deletingSettlementId?: string | null;
+  loading?: boolean;
 };
 
-export function SettlementHistory({ settlements, members, onDelete }: SettlementHistoryProps) {
+export function SettlementHistory({
+  settlements,
+  members,
+  onDelete,
+  deletingSettlementId = null,
+  loading = false,
+}: SettlementHistoryProps) {
   const getMember = (id: string) => members.find((m) => m.id === id);
 
-  const handleDelete = (id: string) => {
+  const handleDelete = async (id: string) => {
     if (onDelete && window.confirm('Delete this settlement?')) {
-      onDelete(id);
+      await onDelete(id);
     }
   };
 
   return (
     <div className="space-y-3">
       <h3 className="text-sm font-medium text-gray-700">Settlement history</h3>
-      {settlements.length === 0 ? (
+      {loading ? (
+        <p className="text-sm text-gray-500">Loading settlements...</p>
+      ) : settlements.length === 0 ? (
         <p className="text-sm text-gray-500">No settlements recorded yet.</p>
       ) : (
         <div className="space-y-2">
@@ -71,10 +81,13 @@ export function SettlementHistory({ settlements, members, onDelete }: Settlement
                 {onDelete && (
                   <button
                     type="button"
-                    onClick={() => handleDelete(settlement.id)}
+                    onClick={async () => {
+                      await handleDelete(settlement.id);
+                    }}
                     className="text-xs text-red-500 hover:text-red-600"
+                    disabled={deletingSettlementId === settlement.id}
                   >
-                    Remove
+                    {deletingSettlementId === settlement.id ? 'Removing...' : 'Remove'}
                   </button>
                 )}
               </div>

@@ -7,8 +7,14 @@ test('core flow: group, expense, optional settlement', async ({ page }) => {
   const memberEmail = process.env.E2E_MEMBER_EMAIL;
 
   if (!email || !password) {
-    test.skip(true, 'Set E2E_EMAIL and E2E_PASSWORD to run this test.');
+    if (process.env.CI) {
+      throw new Error('CI requires E2E_EMAIL and E2E_PASSWORD for core flow coverage.');
+    }
+    test.skip(true, 'Set E2E_EMAIL and E2E_PASSWORD to run this test locally.');
     return;
+  }
+  if (!memberEmail && process.env.CI) {
+    throw new Error('CI requires E2E_MEMBER_EMAIL so settlement flow is always exercised.');
   }
 
   await signIn(page, email, password);

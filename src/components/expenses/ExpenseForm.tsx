@@ -25,12 +25,19 @@ type ExpenseFormData = {
 
 type ExpenseFormProps = {
   members: Member[];
-  onSubmit: (data: ExpenseFormData) => void;
+  onSubmit: (data: ExpenseFormData) => Promise<void> | void;
   onCancel?: () => void;
   initialData?: Expense | null;
+  submitting?: boolean;
 };
 
-export function ExpenseForm({ members, onSubmit, onCancel, initialData = null }: ExpenseFormProps) {
+export function ExpenseForm({
+  members,
+  onSubmit,
+  onCancel,
+  initialData = null,
+  submitting = false,
+}: ExpenseFormProps) {
   const [description, setDescription] = useState(initialData?.description || '');
   const [amountStr, setAmountStr] = useState(
     initialData ? (initialData.amount / 100).toFixed(2) : ''
@@ -67,8 +74,9 @@ export function ExpenseForm({ members, onSubmit, onCancel, initialData = null }:
 
   const amount = parseCurrencyToCents(amountStr);
 
-  const handleSubmit = (e: FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    if (submitting) return;
 
     const newErrors: Record<string, string> = {};
 
@@ -102,7 +110,7 @@ export function ExpenseForm({ members, onSubmit, onCancel, initialData = null }:
       return;
     }
 
-    onSubmit({
+    await onSubmit({
       description: description.trim(),
       amount,
       paidBy,
@@ -123,6 +131,7 @@ export function ExpenseForm({ members, onSubmit, onCancel, initialData = null }:
         }}
         error={errors.description}
         autoFocus
+        disabled={submitting}
       />
 
       <CurrencyInput
@@ -134,6 +143,7 @@ export function ExpenseForm({ members, onSubmit, onCancel, initialData = null }:
           setErrors({ ...errors, amount: null });
         }}
         error={errors.amount}
+        disabled={submitting}
       />
 
       <PayerSelector
@@ -143,6 +153,7 @@ export function ExpenseForm({ members, onSubmit, onCancel, initialData = null }:
           setPaidBy(id);
           setErrors({ ...errors, paidBy: null });
         }}
+        disabled={submitting}
       />
       {errors.paidBy && <p className="text-sm text-red-600 -mt-4">{errors.paidBy}</p>}
 
@@ -150,6 +161,7 @@ export function ExpenseForm({ members, onSubmit, onCancel, initialData = null }:
         members={members}
         totalAmount={amount}
         splitType={splitType}
+        disabled={submitting}
         onSplitTypeChange={(type) => {
           setSplitType(type);
           setErrors({ ...errors, splits: null });
@@ -164,12 +176,18 @@ export function ExpenseForm({ members, onSubmit, onCancel, initialData = null }:
 
       <div className="flex gap-3 pt-2">
         {onCancel && (
-          <Button type="button" variant="secondary" onClick={onCancel} className="flex-1">
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={onCancel}
+            className="flex-1"
+            disabled={submitting}
+          >
             Cancel
           </Button>
         )}
-        <Button type="submit" className="flex-1">
-          {initialData ? 'Save Changes' : 'Add Expense'}
+        <Button type="submit" className="flex-1" disabled={submitting}>
+          {submitting ? 'Saving...' : initialData ? 'Save Changes' : 'Add Expense'}
         </Button>
       </div>
     </form>

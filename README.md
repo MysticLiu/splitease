@@ -46,12 +46,16 @@ npm run typecheck
    ```
 2. Create `.env.e2e` (copy from `.env.e2e.example`) and fill in:
    - `E2E_EMAIL` / `E2E_PASSWORD` for an existing confirmed user
-   - Optional: `E2E_MEMBER_EMAIL` for an existing second user (tests member add + settle)
+   - Optional locally / required in CI: `E2E_MEMBER_EMAIL` for an existing second user (tests member add + settle)
    - Optional: `E2E_ALLOW_SIGNUP=true` to run the signup test
 3. Run:
    ```bash
    npm run test:e2e
    ```
+
+### CI behavior
+- In CI, Playwright now requires `E2E_EMAIL`, `E2E_PASSWORD`, and `E2E_MEMBER_EMAIL`.
+- If any required variable is missing, CI fails fast instead of skipping core E2E coverage.
 
 ## Smoke test checklist
 - Sign up and confirm email

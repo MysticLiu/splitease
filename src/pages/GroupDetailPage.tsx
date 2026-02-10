@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Plus, Settings, Trash2 } from 'lucide-react';
@@ -69,6 +69,21 @@ export function GroupDetailPage() {
   const [group, setGroup] = useState<Group | null>(null);
   const [loadingGroup, setLoadingGroup] = useState(true);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [loadingExpenses, setLoadingExpenses] = useState(false);
+  const [loadingSettlements, setLoadingSettlements] = useState(false);
+  const [loadingInvites, setLoadingInvites] = useState(false);
+  const [isAddingExpense, setIsAddingExpense] = useState(false);
+  const [isEditingExpense, setIsEditingExpense] = useState(false);
+  const [deletingExpenseId, setDeletingExpenseId] = useState<string | null>(null);
+  const [deletingSettlementId, setDeletingSettlementId] = useState<string | null>(null);
+  const [isDeletingGroup, setIsDeletingGroup] = useState(false);
+
+  const addExpenseLock = useRef(false);
+  const editExpenseLock = useRef(false);
+  const deleteExpenseLock = useRef(false);
+  const settleLock = useRef(false);
+  const deleteSettlementLock = useRef(false);
+  const deleteGroupLock = useRef(false);
 
   const expenses: Expense[] = expensesByGroup[groupId] ?? EMPTY_EXPENSES;
   const settlements: Settlement[] = settlementsByGroup[groupId] ?? EMPTY_SETTLEMENTS;
@@ -81,6 +96,9 @@ export function GroupDetailPage() {
       setActionError(null);
       if (!groupId) {
         setActionError('Group not found.');
+        setLoadingExpenses(false);
+        setLoadingSettlements(false);
+        setLoadingInvites(false);
         setLoadingGroup(false);
         return;
       }
@@ -88,6 +106,9 @@ export function GroupDetailPage() {
       if (!mounted) return;
       if (!groupData) {
         setActionError('Failed to load group.');
+        setLoadingExpenses(false);
+        setLoadingSettlements(false);
+        setLoadingInvites(false);
         setLoadingGroup(false);
         return;
       }
@@ -95,9 +116,19 @@ export function GroupDetailPage() {
       setLoadingGroup(false);
 
       // Load related data without blocking the main view.
-      getGroupExpenses(groupId);
-      getGroupSettlements(groupId);
-      getGroupInvites(groupId);
+      setLoadingExpenses(true);
+      setLoadingSettlements(true);
+      setLoadingInvites(true);
+
+      void getGroupExpenses(groupId).finally(() => {
+        if (mounted) setLoadingExpenses(false);
+      });
+      void getGroupSettlements(groupId).finally(() => {
+        if (mounted) setLoadingSettlements(false);
+      });
+      void getGroupInvites(groupId).finally(() => {
+        if (mounted) setLoadingInvites(false);
+      });
     };
 
     loadGroup();
@@ -142,18 +173,27 @@ export function GroupDetailPage() {
   const activeMembers = group.members.filter((member) => member.isActive);
 
   const handleAddExpense = async (data: ExpenseFormPayload) => {
+    if (addExpenseLock.current) return;
+    addExpenseLock.current = true;
+    setIsAddingExpense(true);
     setActionError(null);
     try {
       await createExpense(groupId, data.description, data.amount, data.paidBy, data.splitType, data.splits);
       setShowExpenseModal(false);
     } catch (error) {
       setActionError(error instanceof Error ? error.message : 'Failed to add expense.');
+    } finally {
+      addExpenseLock.current = false;
+      setIsAddingExpense(false);
     }
   };
 
   const handleEditExpense = async (data: ExpenseFormPayload) => {
-    setActionError(null);
     if (!editingExpense) return;
+    if (editExpenseLock.current) return;
+    editExpenseLock.current = true;
+    setIsEditingExpense(true);
+    setActionError(null);
     try {
       await updateExpense(editingExpense.id, {
         description: data.description,
@@ -165,43 +205,68 @@ export function GroupDetailPage() {
       setEditingExpense(null);
     } catch (error) {
       setActionError(error instanceof Error ? error.message : 'Failed to update expense.');
+    } finally {
+      editExpenseLock.current = false;
+      setIsEditingExpense(false);
     }
   };
 
   const handleDeleteExpense = async (expenseId: string) => {
+    if (deleteExpenseLock.current) return;
+    deleteExpenseLock.current = true;
+    setDeletingExpenseId(expenseId);
     setActionError(null);
     try {
       await deleteExpense(expenseId, groupId);
     } catch (error) {
       setActionError(error instanceof Error ? error.message : 'Failed to delete expense.');
+    } finally {
+      deleteExpenseLock.current = false;
+      setDeletingExpenseId(null);
     }
   };
 
   const handleSettle = async (fromId: string, toId: string, amount: number) => {
+    if (settleLock.current) return;
+    settleLock.current = true;
     setActionError(null);
     try {
       await createSettlement(groupId, fromId, toId, amount);
     } catch (error) {
       setActionError(error instanceof Error ? error.message : 'Failed to record settlement.');
+    } finally {
+      settleLock.current = false;
     }
   };
 
   const handleDeleteSettlement = async (settlementId: string) => {
+    if (deleteSettlementLock.current) return;
+    deleteSettlementLock.current = true;
+    setDeletingSettlementId(settlementId);
     setActionError(null);
     try {
       await deleteSettlement(settlementId, groupId);
     } catch (error) {
       setActionError(error instanceof Error ? error.message : 'Failed to delete settlement.');
+    } finally {
+      deleteSettlementLock.current = false;
+      setDeletingSettlementId(null);
     }
   };
 
   const handleDeleteGroup = async () => {
+    if (deleteGroupLock.current) return;
+    deleteGroupLock.current = true;
+    setIsDeletingGroup(true);
     setActionError(null);
     try {
       await deleteGroup(groupId);
       navigate('/');
     } catch (error) {
       setActionError(error instanceof Error ? error.message : 'Failed to delete group.');
+    } finally {
+      deleteGroupLock.current = false;
+      setIsDeletingGroup(false);
     }
   };
 
@@ -237,7 +302,7 @@ export function GroupDetailPage() {
             active={activeTab === 'expenses'}
             onClick={() => setActiveTab('expenses')}
           >
-            Expenses ({expenses.length})
+            Expenses ({loadingExpenses ? '...' : expenses.length})
           </TabButton>
           <TabButton
             active={activeTab === 'balances'}
@@ -260,22 +325,31 @@ export function GroupDetailPage() {
         {activeTab === 'expenses' && (
           <div>
             <div className="flex justify-end mb-4">
-              <Button onClick={() => setShowExpenseModal(true)}>
+              <Button onClick={() => setShowExpenseModal(true)} disabled={isAddingExpense}>
                 <Plus className="w-4 h-4 mr-1" />
                 Add Expense
               </Button>
             </div>
-            <ExpenseList
-              expenses={expenses}
-              members={group.members}
-              onEdit={(expense) => setEditingExpense(expense)}
-              onDelete={handleDeleteExpense}
-            />
+            {loadingExpenses ? (
+              <p className="text-sm text-gray-500 py-6">Loading expenses...</p>
+            ) : (
+              <ExpenseList
+                expenses={expenses}
+                members={group.members}
+                onEdit={(expense) => setEditingExpense(expense)}
+                onDelete={handleDeleteExpense}
+                deletingExpenseId={deletingExpenseId}
+              />
+            )}
           </div>
         )}
 
         {activeTab === 'balances' && (
-          <BalanceSummary members={group.members} balances={balances} />
+          loadingExpenses || loadingSettlements ? (
+            <p className="text-sm text-gray-500 py-6">Loading balances...</p>
+          ) : (
+            <BalanceSummary members={group.members} balances={balances} />
+          )
         )}
 
         {activeTab === 'settle' && (
@@ -284,11 +358,14 @@ export function GroupDetailPage() {
               debts={debts}
               members={group.members}
               onSettle={(debt) => setSettlingDebt(debt)}
+              loading={loadingExpenses || loadingSettlements}
             />
             <SettlementHistory
               settlements={settlements}
               members={group.members}
               onDelete={handleDeleteSettlement}
+              deletingSettlementId={deletingSettlementId}
+              loading={loadingSettlements}
             />
           </div>
         )}
@@ -296,7 +373,9 @@ export function GroupDetailPage() {
 
       <Modal
         isOpen={showExpenseModal}
-        onClose={() => setShowExpenseModal(false)}
+        onClose={() => {
+          if (!isAddingExpense) setShowExpenseModal(false);
+        }}
         title="Add Expense"
         size="lg"
       >
@@ -304,12 +383,15 @@ export function GroupDetailPage() {
           members={activeMembers}
           onSubmit={handleAddExpense}
           onCancel={() => setShowExpenseModal(false)}
+          submitting={isAddingExpense}
         />
       </Modal>
 
       <Modal
         isOpen={!!editingExpense}
-        onClose={() => setEditingExpense(null)}
+        onClose={() => {
+          if (!isEditingExpense) setEditingExpense(null);
+        }}
         title="Edit Expense"
         size="lg"
       >
@@ -319,6 +401,7 @@ export function GroupDetailPage() {
             initialData={editingExpense}
             onSubmit={handleEditExpense}
             onCancel={() => setEditingExpense(null)}
+            submitting={isEditingExpense}
           />
         )}
       </Modal>
@@ -343,6 +426,7 @@ export function GroupDetailPage() {
             <GroupMembersManager
               members={activeMembers}
               invites={invites}
+              loadingInvites={loadingInvites}
               ownerId={group.ownerId}
               currentUserId={session?.user?.id}
               onAdd={async (email) => {
@@ -378,6 +462,7 @@ export function GroupDetailPage() {
                 variant="danger"
                 onClick={() => setShowDeleteConfirm(true)}
                 className="w-full"
+                disabled={isDeletingGroup}
               >
                 <Trash2 className="w-4 h-4 mr-2" />
                 Delete Group
@@ -389,7 +474,9 @@ export function GroupDetailPage() {
 
       <Modal
         isOpen={showDeleteConfirm}
-        onClose={() => setShowDeleteConfirm(false)}
+        onClose={() => {
+          if (!isDeletingGroup) setShowDeleteConfirm(false);
+        }}
         title="Delete Group"
         size="sm"
       >
@@ -402,11 +489,17 @@ export function GroupDetailPage() {
             variant="secondary"
             onClick={() => setShowDeleteConfirm(false)}
             className="flex-1"
+            disabled={isDeletingGroup}
           >
             Cancel
           </Button>
-          <Button variant="danger" onClick={handleDeleteGroup} className="flex-1">
-            Delete
+          <Button
+            variant="danger"
+            onClick={handleDeleteGroup}
+            className="flex-1"
+            disabled={isDeletingGroup}
+          >
+            {isDeletingGroup ? 'Deleting...' : 'Delete'}
           </Button>
         </div>
       </Modal>

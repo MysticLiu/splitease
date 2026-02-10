@@ -1,6 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate, Outlet } from 'react-router-dom';
 import { AppProvider } from './context/AppContext';
-import { HomePage, GroupsPage, GroupDetailPage, AuthPage, ProfilePage } from './pages';
+import { HomePage, GroupsPage, GroupDetailPage, AuthPage, ProfilePage, NotFoundPage } from './pages';
 import { useApp } from './context/useApp';
 
 function RequireAuth() {
@@ -32,6 +32,7 @@ function App() {
             <Route path="/groups" element={<GroupsPage />} />
             <Route path="/groups/:groupId" element={<GroupDetailPage />} />
             <Route path="/profile" element={<ProfilePage />} />
+            <Route path="*" element={<NotFoundPage />} />
           </Route>
         </Routes>
       </BrowserRouter>

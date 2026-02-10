@@ -10,7 +10,7 @@ type GroupFormData = {
 };
 
 type GroupFormProps = {
-  onSubmit: (data: GroupFormData) => void;
+  onSubmit: (data: GroupFormData) => Promise<void> | void;
   onCancel?: () => void;
   initialData?: Partial<GroupFormData> | null;
 };
@@ -19,9 +19,11 @@ export function GroupForm({ onSubmit, onCancel, initialData = null }: GroupFormP
   const [name, setName] = useState(initialData?.name || '');
   const [description, setDescription] = useState(initialData?.description || '');
   const [errors, setErrors] = useState<Record<string, string | null>>({});
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const handleSubmit = (e: FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    if (isSubmitting) return;
 
     const newErrors: Record<string, string> = {};
 
@@ -33,10 +35,15 @@ export function GroupForm({ onSubmit, onCancel, initialData = null }: GroupFormP
       return;
     }
 
-    onSubmit({
-      name: name.trim(),
-      description: description.trim(),
-    });
+    setIsSubmitting(true);
+    try {
+      await onSubmit({
+        name: name.trim(),
+        description: description.trim(),
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -51,6 +58,7 @@ export function GroupForm({ onSubmit, onCancel, initialData = null }: GroupFormP
         }}
         error={errors.name}
         autoFocus
+        disabled={isSubmitting}
       />
 
       <Input
@@ -58,16 +66,23 @@ export function GroupForm({ onSubmit, onCancel, initialData = null }: GroupFormP
         placeholder="What is this group for?"
         value={description}
         onChange={(e: ChangeEvent<HTMLInputElement>) => setDescription(e.target.value)}
+        disabled={isSubmitting}
       />
 
       <div className="flex gap-3 pt-2">
         {onCancel && (
-          <Button type="button" variant="secondary" onClick={onCancel} className="flex-1">
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={onCancel}
+            className="flex-1"
+            disabled={isSubmitting}
+          >
             Cancel
           </Button>
         )}
-        <Button type="submit" className="flex-1">
-          {initialData ? 'Save Changes' : 'Create Group'}
+        <Button type="submit" className="flex-1" disabled={isSubmitting}>
+          {isSubmitting ? 'Saving...' : initialData ? 'Save Changes' : 'Create Group'}
         </Button>
       </div>
     </form>

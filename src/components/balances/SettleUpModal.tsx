@@ -12,11 +12,12 @@ type SettleUpModalProps = {
   onClose: () => void;
   debt: Debt | null;
   members: Member[];
-  onConfirm: (fromId: string, toId: string, amount: number) => void;
+  onConfirm: (fromId: string, toId: string, amount: number) => Promise<void> | void;
 };
 
 export function SettleUpModal({ isOpen, onClose, debt, members, onConfirm }: SettleUpModalProps) {
   const [amountStr, setAmountStr] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const fromMember = members.find((m) => m.id === debt?.from);
   const toMember = members.find((m) => m.id === debt?.to);
@@ -24,6 +25,7 @@ export function SettleUpModal({ isOpen, onClose, debt, members, onConfirm }: Set
   useEffect(() => {
     if (!isOpen) {
       setAmountStr('');
+      setIsSubmitting(false);
     }
   }, [isOpen]);
 
@@ -33,18 +35,29 @@ export function SettleUpModal({ isOpen, onClose, debt, members, onConfirm }: Set
   const cappedAmount = Math.min(rawAmount, defaultAmount);
   const isOver = rawAmount > defaultAmount;
 
-  const handleConfirm = () => {
+  const handleConfirm = async () => {
+    if (isSubmitting) return;
     if (cappedAmount > 0 && debt) {
-      onConfirm(debt.from, debt.to, cappedAmount);
-      setAmountStr('');
-      onClose();
+      setIsSubmitting(true);
+      try {
+        await onConfirm(debt.from, debt.to, cappedAmount);
+        setAmountStr('');
+        onClose();
+      } finally {
+        setIsSubmitting(false);
+      }
     }
   };
 
   if (!debt || !fromMember || !toMember) return null;
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title="Record Settlement" size="sm">
+    <Modal
+      isOpen={isOpen}
+      onClose={isSubmitting ? () => {} : onClose}
+      title="Record Settlement"
+      size="sm"
+    >
       <div className="space-y-6">
         {/* Visual representation */}
         <div className="flex items-center justify-center gap-4 py-4">
@@ -82,6 +95,7 @@ export function SettleUpModal({ isOpen, onClose, debt, members, onConfirm }: Set
           placeholder={(defaultAmount / 100).toFixed(2)}
           value={amountStr}
           onChange={setAmountStr}
+          disabled={isSubmitting}
         />
 
         <p className="text-sm text-gray-500">
@@ -95,11 +109,11 @@ export function SettleUpModal({ isOpen, onClose, debt, members, onConfirm }: Set
 
         {/* Actions */}
         <div className="flex gap-3">
-          <Button variant="secondary" onClick={onClose} className="flex-1">
+          <Button variant="secondary" onClick={onClose} className="flex-1" disabled={isSubmitting}>
             Cancel
           </Button>
-          <Button onClick={handleConfirm} className="flex-1">
-            Record Payment
+          <Button onClick={handleConfirm} className="flex-1" disabled={isSubmitting}>
+            {isSubmitting ? 'Recording...' : 'Record Payment'}
           </Button>
         </div>
       </div>

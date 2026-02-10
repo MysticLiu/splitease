@@ -7,9 +7,16 @@ type PayerSelectorProps = {
   value: string;
   onChange: (id: string) => void;
   label?: string;
+  disabled?: boolean;
 };
 
-export function PayerSelector({ members, value, onChange, label = 'Paid by' }: PayerSelectorProps) {
+export function PayerSelector({
+  members,
+  value,
+  onChange,
+  label = 'Paid by',
+  disabled = false,
+}: PayerSelectorProps) {
   const options = members.map((member) => ({
     value: member.id,
     label: member.name,
@@ -37,6 +44,7 @@ export function PayerSelector({ members, value, onChange, label = 'Paid by' }: P
           onChange={onChange}
           placeholder="Select who paid"
           className="flex-1"
+          disabled={disabled}
         />
       </div>
     </div>

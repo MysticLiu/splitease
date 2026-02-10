@@ -8,9 +8,18 @@ type DebtListProps = {
   debts: Debt[];
   members: Member[];
   onSettle: (debt: Debt) => void;
+  loading?: boolean;
 };
 
-export function DebtList({ debts, members, onSettle }: DebtListProps) {
+export function DebtList({ debts, members, onSettle, loading = false }: DebtListProps) {
+  if (loading) {
+    return (
+      <div className="text-center py-8">
+        <p className="text-sm text-gray-500">Loading suggested payments...</p>
+      </div>
+    );
+  }
+
   if (debts.length === 0) {
     return (
       <div className="text-center py-8">

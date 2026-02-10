@@ -23,7 +23,10 @@ test('sign in with existing account', async ({ page }) => {
   const email = process.env.E2E_EMAIL;
   const password = process.env.E2E_PASSWORD;
   if (!email || !password) {
-    test.skip(true, 'Set E2E_EMAIL and E2E_PASSWORD to run this test.');
+    if (process.env.CI) {
+      throw new Error('CI requires E2E_EMAIL and E2E_PASSWORD for auth coverage.');
+    }
+    test.skip(true, 'Set E2E_EMAIL and E2E_PASSWORD to run this test locally.');
     return;
   }
 

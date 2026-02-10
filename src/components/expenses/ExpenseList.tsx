@@ -6,10 +6,17 @@ type ExpenseListProps = {
   expenses: Expense[];
   members: Member[];
   onEdit: (expense: Expense) => void;
-  onDelete: (expenseId: string) => void;
+  onDelete: (expenseId: string) => Promise<void> | void;
+  deletingExpenseId?: string | null;
 };
 
-export function ExpenseList({ expenses, members, onEdit, onDelete }: ExpenseListProps) {
+export function ExpenseList({
+  expenses,
+  members,
+  onEdit,
+  onDelete,
+  deletingExpenseId = null,
+}: ExpenseListProps) {
   if (expenses.length === 0) {
     return (
       <div className="text-center py-12">
@@ -31,6 +38,7 @@ export function ExpenseList({ expenses, members, onEdit, onDelete }: ExpenseList
           members={members}
           onEdit={onEdit}
           onDelete={onDelete}
+          deleting={deletingExpenseId === expense.id}
         />
       ))}
     </div>

@@ -13,6 +13,7 @@ type SplitSelectorProps = {
   members: Member[];
   totalAmount: number;
   splitType: SplitType;
+  disabled?: boolean;
   onSplitTypeChange: (type: SplitType) => void;
   splits: ExpenseSplit[];
   onSplitsChange: (splits: ExpenseSplit[]) => void;
@@ -23,6 +24,7 @@ export function SplitSelector({
   members,
   totalAmount,
   splitType,
+  disabled = false,
   onSplitTypeChange,
   splits,
   onSplitsChange,
@@ -85,8 +87,9 @@ export function SplitSelector({
               key={type}
               type="button"
               onClick={() => onSplitTypeChange(type as SplitType)}
+              disabled={disabled}
               className={clsx(
-                'flex-1 px-3 py-2 text-sm font-medium rounded-lg border transition-colors',
+                'flex-1 px-3 py-2 text-sm font-medium rounded-lg border transition-colors disabled:cursor-not-allowed disabled:opacity-60',
                 splitType === type
                   ? 'bg-indigo-50 border-indigo-500 text-indigo-700'
                   : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
@@ -123,6 +126,7 @@ export function SplitSelector({
                 member={member}
                 split={split}
                 splitType={splitType}
+                disabled={disabled}
                 equalShareAmount={equalShareByMember[member.id] ?? 0}
                 onToggle={() => handleToggleMember(member.id)}
                 onAmountChange={(val) => handleAmountChange(member.id, val)}
@@ -150,6 +154,7 @@ type MemberSplitRowProps = {
   member: Member;
   split: ExpenseSplit;
   splitType: SplitType;
+  disabled: boolean;
   equalShareAmount: number;
   onToggle: () => void;
   onAmountChange: (value: string) => void;
@@ -160,6 +165,7 @@ function MemberSplitRow({
   member,
   split,
   splitType,
+  disabled,
   equalShareAmount,
   onToggle,
   onAmountChange,
@@ -192,8 +198,9 @@ function MemberSplitRow({
       <button
         type="button"
         onClick={onToggle}
+        disabled={disabled}
         className={clsx(
-          'w-5 h-5 rounded border flex items-center justify-center transition-colors',
+          'w-5 h-5 rounded border flex items-center justify-center transition-colors disabled:cursor-not-allowed disabled:opacity-60',
           split.isIncluded
             ? 'bg-indigo-600 border-indigo-600 text-white'
             : 'bg-white border-gray-300'
@@ -227,7 +234,7 @@ function MemberSplitRow({
           }}
           placeholder="0.00"
           className="w-28"
-          disabled={!split.isIncluded}
+          disabled={disabled || !split.isIncluded}
         />
       )}
 
@@ -243,8 +250,8 @@ function MemberSplitRow({
               setLocalPercentage(e.target.value);
               onPercentageChange(e.target.value);
             }}
-            disabled={!split.isIncluded}
-            className="w-16 px-2 py-1 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            disabled={disabled || !split.isIncluded}
+            className="w-16 px-2 py-1 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:cursor-not-allowed disabled:bg-gray-100"
           />
           <Percent className="w-4 h-4 text-gray-400" />
         </div>

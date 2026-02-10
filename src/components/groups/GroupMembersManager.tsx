@@ -10,6 +10,7 @@ import type { Invite, Member } from '../../types';
 type GroupMembersManagerProps = {
   members: Member[];
   invites?: Invite[];
+  loadingInvites?: boolean;
   ownerId: string;
   currentUserId?: string;
   onAdd: (email: string) => Promise<{ status?: string } | void>;
@@ -20,6 +21,7 @@ type GroupMembersManagerProps = {
 export function GroupMembersManager({
   members,
   invites = [],
+  loadingInvites = false,
   ownerId,
   currentUserId,
   onAdd,
@@ -145,9 +147,12 @@ export function GroupMembersManager({
         </div>
       )}
 
-      {pendingInvites.length > 0 && (
+      {(loadingInvites || pendingInvites.length > 0) && (
         <div className="space-y-2 pt-2 border-t">
           <p className="text-xs text-gray-500">Pending invites</p>
+          {loadingInvites && (
+            <p className="text-xs text-gray-400">Loading invites...</p>
+          )}
           {pendingInvites.map((invite) => (
             <div
               key={invite.id}

@@ -10,6 +10,18 @@ if (fs.existsSync(envPath)) {
   dotenv.config();
 }
 
+const isCI = Boolean(process.env.CI);
+if (isCI) {
+  const requiredEnv = ['E2E_EMAIL', 'E2E_PASSWORD', 'E2E_MEMBER_EMAIL'];
+  const missing = requiredEnv.filter((key) => !process.env[key]);
+  if (missing.length > 0) {
+    throw new Error(
+      `Missing required CI E2E env vars: ${missing.join(', ')}. ` +
+        'Configure them as CI secrets before running Playwright.'
+    );
+  }
+}
+
 const port = process.env.E2E_PORT ? Number(process.env.E2E_PORT) : 4173;
 
 export default defineConfig({
