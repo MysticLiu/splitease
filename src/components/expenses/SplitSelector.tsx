@@ -28,6 +28,22 @@ export function SplitSelector({
   onSplitsChange,
   error,
 }: SplitSelectorProps) {
+  const splitsByMember = new Map(splits.map((split) => [split.memberId, split]));
+
+  const includedMembers = members.filter(
+    (member) => splitsByMember.get(member.id)?.isIncluded
+  );
+  const includedCount = includedMembers.length;
+  const equalBaseAmount = includedCount > 0 ? Math.floor(totalAmount / includedCount) : 0;
+  const equalRemainder = includedCount > 0 ? totalAmount % includedCount : 0;
+  const equalShareByMember: Record<string, number> = {};
+  if (splitType === SPLIT_TYPES.EQUAL && includedCount > 0) {
+    includedMembers.forEach((member, index) => {
+      equalShareByMember[member.id] =
+        equalBaseAmount + (index < equalRemainder ? 1 : 0);
+    });
+  }
+
   const handleToggleMember = (memberId: string) => {
     onSplitsChange(
       splits.map((s) =>
@@ -37,25 +53,24 @@ export function SplitSelector({
   };
 
   const handleAmountChange = (memberId: string, amount: string) => {
-    const parsed = amount ? parseFloat(amount) : 0;
+    const parsed = amount ? Number.parseFloat(amount) : 0;
+    const normalized = Number.isFinite(parsed) ? parsed : 0;
     onSplitsChange(
       splits.map((s) =>
-        s.memberId === memberId ? { ...s, amount: Math.round(parsed * 100) } : s
+        s.memberId === memberId ? { ...s, amount: Math.round(normalized * 100) } : s
       )
     );
   };
 
   const handlePercentageChange = (memberId: string, percentage: string) => {
-    const parsed = percentage ? parseFloat(percentage) : 0;
+    const parsed = percentage ? Number.parseFloat(percentage) : 0;
+    const normalized = Number.isFinite(parsed) ? Math.max(0, Math.min(100, parsed)) : 0;
     onSplitsChange(
       splits.map((s) =>
-        s.memberId === memberId ? { ...s, percentage: parsed } : s
+        s.memberId === memberId ? { ...s, percentage: normalized } : s
       )
     );
   };
-
-  const includedCount = splits.filter((s) => s.isIncluded).length;
-  const perPersonAmount = includedCount > 0 ? Math.floor(totalAmount / includedCount) : 0;
 
   return (
     <div className="space-y-4">
@@ -95,7 +110,7 @@ export function SplitSelector({
 
         <div className="space-y-2">
           {members.map((member) => {
-            const split: ExpenseSplit = splits.find((s) => s.memberId === member.id) || {
+            const split: ExpenseSplit = splitsByMember.get(member.id) || {
               memberId: member.id,
               isIncluded: true,
               amount: 0,
@@ -108,7 +123,7 @@ export function SplitSelector({
                 member={member}
                 split={split}
                 splitType={splitType}
-                perPersonAmount={perPersonAmount}
+                equalShareAmount={equalShareByMember[member.id] ?? 0}
                 onToggle={() => handleToggleMember(member.id)}
                 onAmountChange={(val) => handleAmountChange(member.id, val)}
                 onPercentageChange={(val) => handlePercentageChange(member.id, val)}
@@ -123,6 +138,8 @@ export function SplitSelector({
         splits={splits}
         splitType={splitType}
         totalAmount={totalAmount}
+        equalRemainder={equalRemainder}
+        equalIncludedCount={includedCount}
         error={error}
       />
     </div>
@@ -133,7 +150,7 @@ type MemberSplitRowProps = {
   member: Member;
   split: ExpenseSplit;
   splitType: SplitType;
-  perPersonAmount: number;
+  equalShareAmount: number;
   onToggle: () => void;
   onAmountChange: (value: string) => void;
   onPercentageChange: (value: string) => void;
@@ -143,7 +160,7 @@ function MemberSplitRow({
   member,
   split,
   splitType,
-  perPersonAmount,
+  equalShareAmount,
   onToggle,
   onAmountChange,
   onPercentageChange,
@@ -171,21 +188,19 @@ function MemberSplitRow({
         split.isIncluded ? 'bg-gray-50' : 'bg-gray-100 opacity-60'
       )}
     >
-      {/* Toggle checkbox (for equal and percentage) */}
-      {(splitType === SPLIT_TYPES.EQUAL || splitType === SPLIT_TYPES.PERCENTAGE) && (
-        <button
-          type="button"
-          onClick={onToggle}
-          className={clsx(
-            'w-5 h-5 rounded border flex items-center justify-center transition-colors',
-            split.isIncluded
-              ? 'bg-indigo-600 border-indigo-600 text-white'
-              : 'bg-white border-gray-300'
-          )}
-        >
-          {split.isIncluded && <Check className="w-3 h-3" />}
-        </button>
-      )}
+      {/* Toggle checkbox */}
+      <button
+        type="button"
+        onClick={onToggle}
+        className={clsx(
+          'w-5 h-5 rounded border flex items-center justify-center transition-colors',
+          split.isIncluded
+            ? 'bg-indigo-600 border-indigo-600 text-white'
+            : 'bg-white border-gray-300'
+        )}
+      >
+        {split.isIncluded && <Check className="w-3 h-3" />}
+      </button>
 
       {/* Member info */}
       <Avatar
@@ -199,7 +214,7 @@ function MemberSplitRow({
       {/* Amount display/input */}
       {splitType === SPLIT_TYPES.EQUAL && (
         <span className="text-sm font-medium text-gray-600">
-          {split.isIncluded ? formatCurrency(perPersonAmount) : '-'}
+          {split.isIncluded ? formatCurrency(equalShareAmount) : '-'}
         </span>
       )}
 
@@ -212,10 +227,11 @@ function MemberSplitRow({
           }}
           placeholder="0.00"
           className="w-28"
+          disabled={!split.isIncluded}
         />
       )}
 
-      {splitType === SPLIT_TYPES.PERCENTAGE && split.isIncluded && (
+      {splitType === SPLIT_TYPES.PERCENTAGE && (
         <div className="flex items-center gap-1 w-24">
           <input
             type="number"
@@ -227,6 +243,7 @@ function MemberSplitRow({
               setLocalPercentage(e.target.value);
               onPercentageChange(e.target.value);
             }}
+            disabled={!split.isIncluded}
             className="w-16 px-2 py-1 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
           />
           <Percent className="w-4 h-4 text-gray-400" />
@@ -240,17 +257,32 @@ type SplitSummaryProps = {
   splits: ExpenseSplit[];
   splitType: SplitType;
   totalAmount: number;
+  equalRemainder: number;
+  equalIncludedCount: number;
   error?: string | null;
 };
 
-function SplitSummary({ splits, splitType, totalAmount, error }: SplitSummaryProps) {
+function SplitSummary({
+  splits,
+  splitType,
+  totalAmount,
+  equalRemainder,
+  equalIncludedCount,
+  error,
+}: SplitSummaryProps) {
   const includedSplits = splits.filter((s) => s.isIncluded);
 
   let summary = '';
   let isValid = true;
 
   if (splitType === SPLIT_TYPES.EQUAL) {
-    summary = `Split equally among ${includedSplits.length} people`;
+    if (equalRemainder > 0) {
+      const centsLabel = equalRemainder === 1 ? 'cent' : 'cents';
+      const peopleLabel = equalRemainder === 1 ? 'person' : 'people';
+      summary = `Split equally among ${equalIncludedCount} people (${equalRemainder} ${centsLabel} remainder distributed to first ${equalRemainder} ${peopleLabel})`;
+    } else {
+      summary = `Split equally among ${includedSplits.length} people`;
+    }
   } else if (splitType === SPLIT_TYPES.CUSTOM) {
     const total = includedSplits.reduce((sum, s) => sum + (s.amount || 0), 0);
     const remaining = totalAmount - total;

@@ -5,7 +5,7 @@ import { Card, CardContent } from '../ui/Card';
 import { AvatarGroup } from '../ui/Avatar';
 import { formatCurrency } from '../../utils/formatters';
 import { calculateBalances, getTotalOwed } from '../../utils/balanceCalculator';
-import { useApp } from '../../context/AppContext';
+import { useApp } from '../../context/useApp';
 import type { Group } from '../../types';
 
 export function GroupCard({ group }: { group: Group }) {

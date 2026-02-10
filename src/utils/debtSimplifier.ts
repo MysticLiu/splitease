@@ -1,4 +1,4 @@
-import type { Debt, Expense, Member, Settlement } from '../types';
+import type { Debt } from '../types';
 
 /**
  * Simplify debts to minimize number of transactions
@@ -55,79 +55,4 @@ export function simplifyDebts(balances: Record<string, number>): Debt[] {
   }
 
   return transactions;
-}
-
-/**
- * Get detailed debt breakdown from individual expenses
- * Shows exactly who owes whom based on each expense
- */
-export function getDetailedDebts(
-  expenses: Expense[],
-  settlements: Settlement[],
-  members: Member[]
-): Debt[] {
-  // Track individual debts: debtMatrix[debtor][creditor] = amount
-  const debtMatrix: Record<string, Record<string, number>> = {};
-  members.forEach(m1 => {
-    debtMatrix[m1.id] = {};
-    members.forEach(m2 => {
-      debtMatrix[m1.id][m2.id] = 0;
-    });
-  });
-
-  // Build debt matrix from expenses
-  expenses.forEach(expense => {
-    const includedSplits = expense.splits.filter(s => s.isIncluded);
-
-    includedSplits.forEach(split => {
-      if (split.memberId !== expense.paidBy) {
-        let shareAmount = 0;
-
-        switch (expense.splitType) {
-          case 'equal':
-            shareAmount = Math.floor(expense.amount / includedSplits.length);
-            break;
-          case 'custom':
-            shareAmount = split.amount || 0;
-            break;
-          case 'percentage':
-            shareAmount = Math.round(expense.amount * (split.percentage || 0) / 100);
-            break;
-        }
-
-        if (shareAmount > 0) {
-          debtMatrix[split.memberId][expense.paidBy] += shareAmount;
-        }
-      }
-    });
-  });
-
-  // Subtract settlements
-  settlements.forEach(s => {
-    debtMatrix[s.fromMemberId][s.toMemberId] -= s.amount;
-  });
-
-  // Net out mutual debts and create transaction list
-  const debts: Debt[] = [];
-  const processed = new Set();
-
-  members.forEach(m1 => {
-    members.forEach(m2 => {
-      const key = [m1.id, m2.id].sort().join('-');
-      if (m1.id !== m2.id && !processed.has(key)) {
-        processed.add(key);
-        const owes12 = debtMatrix[m1.id][m2.id];
-        const owes21 = debtMatrix[m2.id][m1.id];
-        const net = owes12 - owes21;
-
-        if (net > 0) {
-          debts.push({ from: m1.id, to: m2.id, amount: net });
-        } else if (net < 0) {
-          debts.push({ from: m2.id, to: m1.id, amount: -net });
-        }
-      }
-    });
-  });
-
-  return debts;
 }

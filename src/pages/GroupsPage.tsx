@@ -7,7 +7,7 @@ import { Button } from '../components/ui/Button';
 import { Modal } from '../components/ui/Modal';
 import { GroupList } from '../components/groups/GroupList';
 import { GroupForm } from '../components/groups/GroupForm';
-import { useApp } from '../context/AppContext';
+import { useApp } from '../context/useApp';
 
 export function GroupsPage() {
   const navigate = useNavigate();

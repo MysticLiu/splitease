@@ -3,7 +3,7 @@ import { Home, Users, ArrowLeft } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { clsx } from 'clsx';
 import { Avatar } from '../ui/Avatar';
-import { useApp } from '../../context/AppContext';
+import { useApp } from '../../context/useApp';
 
 type HeaderProps = {
   title?: string;

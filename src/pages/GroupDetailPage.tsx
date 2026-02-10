@@ -17,7 +17,7 @@ import {
 } from '../components/balances';
 import { MemberListDisplay } from '../components/groups/MemberList';
 import { GroupMembersManager } from '../components/groups/GroupMembersManager';
-import { useApp } from '../context/AppContext';
+import { useApp } from '../context/useApp';
 import { calculateBalances } from '../utils/balanceCalculator';
 import { simplifyDebts } from '../utils/debtSimplifier';
 import type { Debt, Expense, ExpenseSplit, Group, Invite, Settlement, SplitType } from '../types';
@@ -31,6 +31,10 @@ type ExpenseFormPayload = {
   splitType: SplitType;
   splits: ExpenseSplit[];
 };
+
+const EMPTY_EXPENSES: Expense[] = [];
+const EMPTY_SETTLEMENTS: Settlement[] = [];
+const EMPTY_INVITES: Invite[] = [];
 
 export function GroupDetailPage() {
   const { groupId: rawGroupId } = useParams();
@@ -66,9 +70,9 @@ export function GroupDetailPage() {
   const [loadingGroup, setLoadingGroup] = useState(true);
   const [actionError, setActionError] = useState<string | null>(null);
 
-  const expenses: Expense[] = expensesByGroup[groupId] || [];
-  const settlements: Settlement[] = settlementsByGroup[groupId] || [];
-  const invites: Invite[] = invitesByGroup[groupId] || [];
+  const expenses: Expense[] = expensesByGroup[groupId] ?? EMPTY_EXPENSES;
+  const settlements: Settlement[] = settlementsByGroup[groupId] ?? EMPTY_SETTLEMENTS;
+  const invites: Invite[] = invitesByGroup[groupId] ?? EMPTY_INVITES;
 
   useEffect(() => {
     let mounted = true;

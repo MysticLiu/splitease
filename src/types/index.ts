@@ -63,7 +63,7 @@ export interface Invite {
   status: 'pending' | 'accepted' | 'canceled';
   invitedBy: string;
   createdAt: number;
-  acceptedAt: number;
+  acceptedAt: number | null;
 }
 
 export interface Debt {

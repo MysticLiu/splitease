@@ -9,20 +9,6 @@ export function validateGroupName(name: string) {
   return null;
 }
 
-// Validate member name
-export function validateMemberName(name: string, existingNames: string[] = []) {
-  if (!name || name.trim().length === 0) {
-    return 'Member name is required';
-  }
-  if (name.length > 30) {
-    return 'Name must be 30 characters or less';
-  }
-  if (existingNames.some(n => n.toLowerCase() === name.toLowerCase())) {
-    return 'This name already exists in the group';
-  }
-  return null;
-}
-
 // Validate expense amount
 export function validateAmount(cents: number) {
   if (!cents || cents <= 0) {
@@ -87,13 +73,3 @@ export function validatePercentageSplits(splits: PercentageSplitInput[]) {
   return null;
 }
 
-// Validate members count
-export function validateMembersCount(count: number) {
-  if (count < 2) {
-    return 'A group must have at least 2 members';
-  }
-  if (count > 10) {
-    return 'A group can have at most 10 members';
-  }
-  return null;
-}

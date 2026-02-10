@@ -1,7 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate, Outlet } from 'react-router-dom';
 import { AppProvider } from './context/AppContext';
 import { HomePage, GroupsPage, GroupDetailPage, AuthPage, ProfilePage } from './pages';
-import { useApp } from './context/AppContext';
+import { useApp } from './context/useApp';
 
 function RequireAuth() {
   const { session, loading } = useApp();

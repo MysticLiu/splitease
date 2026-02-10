@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabaseClient';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
-import { useApp } from '../context/AppContext';
+import { useApp } from '../context/useApp';
 
 export function AuthPage() {
   const navigate = useNavigate();

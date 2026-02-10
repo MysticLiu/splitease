@@ -4,7 +4,7 @@ import { Modal } from '../ui/Modal';
 import { Button } from '../ui/Button';
 import { CurrencyInput } from '../ui/Input';
 import { Avatar } from '../ui/Avatar';
-import { formatCurrency } from '../../utils/formatters';
+import { formatCurrency, parseCurrencyToCents } from '../../utils/formatters';
 import type { Debt, Member } from '../../types';
 
 type SettleUpModalProps = {
@@ -29,13 +29,13 @@ export function SettleUpModal({ isOpen, onClose, debt, members, onConfirm }: Set
 
   // Default to full amount
   const defaultAmount = debt?.amount || 0;
-  const amount = amountStr
-    ? Math.round(parseFloat(amountStr) * 100)
-    : defaultAmount;
+  const rawAmount = amountStr ? parseCurrencyToCents(amountStr) : defaultAmount;
+  const cappedAmount = Math.min(rawAmount, defaultAmount);
+  const isOver = rawAmount > defaultAmount;
 
   const handleConfirm = () => {
-    if (amount > 0 && debt) {
-      onConfirm(debt.from, debt.to, amount);
+    if (cappedAmount > 0 && debt) {
+      onConfirm(debt.from, debt.to, cappedAmount);
       setAmountStr('');
       onClose();
     }
@@ -60,7 +60,7 @@ export function SettleUpModal({ isOpen, onClose, debt, members, onConfirm }: Set
 
           <div className="flex flex-col items-center">
             <span className="text-lg font-bold text-gray-900">
-              {formatCurrency(amount)}
+              {formatCurrency(cappedAmount)}
             </span>
             <ArrowRight className="w-6 h-6 text-gray-400" />
           </div>
@@ -87,6 +87,11 @@ export function SettleUpModal({ isOpen, onClose, debt, members, onConfirm }: Set
         <p className="text-sm text-gray-500">
           Original amount owed: {formatCurrency(defaultAmount)}
         </p>
+        {isOver && (
+          <p className="text-sm text-amber-600">
+            Max settlement is {formatCurrency(defaultAmount)} (amount will be capped).
+          </p>
+        )}
 
         {/* Actions */}
         <div className="flex gap-3">
