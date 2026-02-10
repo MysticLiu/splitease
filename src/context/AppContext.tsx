@@ -3,6 +3,7 @@ import type { ReactNode } from 'react';
 import type { Session } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabaseClient';
 import { getAvatarColor } from '../utils/formatters';
+import { getErrorCode, getErrorMessage } from '../utils/errors';
 import { AppContext } from './AppContext.shared';
 import type { AppContextValue, ExpenseUpdates, GroupInviteResult } from './AppContext.shared';
 import type {
@@ -76,6 +77,68 @@ const normalizeInvite = (row: any): Invite => ({
   createdAt: toTimestamp(row.created_at),
   acceptedAt: toNullableTimestamp(row.accepted_at),
 });
+
+const CREATE_GROUP_SELECT =
+  'id, name, description, owner_id, created_at, updated_at';
+
+const isRecoverableCreateGroupRpcError = (error: unknown) => {
+  const code = getErrorCode(error);
+  if (code === 'PGRST202') {
+    return true;
+  }
+
+  const message = getErrorMessage(error, '').toLowerCase();
+  if (!message) return false;
+
+  if (!message.includes('create_group_with_owner')) {
+    return false;
+  }
+
+  return (
+    message.includes('not found') ||
+    message.includes('does not exist') ||
+    message.includes('permission denied') ||
+    message.includes('schema cache') ||
+    message.includes('no function matches')
+  );
+};
+
+const normalizeCreateGroupError = (error: unknown) => {
+  const code = getErrorCode(error);
+  const message = getErrorMessage(error, '').toLowerCase();
+
+  if (code === '23503' || message.includes('groups_owner_id_fkey') || message.includes('profiles')) {
+    return (
+      'Your account profile is missing in the database. ' +
+      'In Supabase SQL Editor, re-run `supabase/schema.sql` (or at minimum the profiles backfill section), then try again.'
+    );
+  }
+
+  if (
+    code === '42501' ||
+    message.includes('row-level security') ||
+    message.includes('not authorized') ||
+    message.includes('permission denied')
+  ) {
+    return (
+      'Database permissions are not configured correctly for group creation. ' +
+      'Please re-apply `supabase/schema.sql` in your Supabase project.'
+    );
+  }
+
+  if (code === 'PGRST202' || message.includes('create_group_with_owner')) {
+    return (
+      'The `create_group_with_owner` RPC is missing or outdated in Supabase. ' +
+      'Please re-apply `supabase/schema.sql` and try again.'
+    );
+  }
+
+  if (message.includes('not authenticated') || message.includes('jwt')) {
+    return 'Your session appears to be expired. Please sign out and sign in again.';
+  }
+
+  return getErrorMessage(error, 'Failed to create group.');
+};
 
 export function AppProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
@@ -219,45 +282,122 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const createGroup = useCallback(
     async (name: string, description: string = '') => {
       if (!userId) throw new Error('Not authenticated');
-      const { data: rpcData, error } = await supabase
-        .rpc('create_group_with_owner', {
-          name_input: name?.trim(),
-          description_input: description?.trim() || '',
-        })
-        .single();
-      if (error) throw error;
-
-      const data = rpcData as any;
-      if (!data?.id) {
-        throw new Error('Failed to create group.');
+      const trimmedName = name?.trim() || '';
+      const trimmedDescription = description?.trim() || '';
+      if (!trimmedName) {
+        throw new Error('Group name is required.');
       }
 
-      const groupId = data.id;
-      if (groupId) {
-        const hydrated = await getGroup(groupId);
-        if (hydrated) return hydrated;
-      }
+      const ensureProfileExists = async () => {
+        if (profile) return profile;
 
-      const normalized = normalizeGroup({
-        ...data,
-        group_members: [
-          {
-            user_id: userId,
-            role: 'owner',
-            is_active: true,
-            profiles: {
-              id: userId,
-              email: profile?.email || userEmail,
-              full_name: profile?.fullName || userEmail,
-              avatar_url: profile?.avatarUrl || '',
+        const loadedProfile = await loadProfile();
+        if (loadedProfile) return loadedProfile;
+
+        // Best-effort repair for projects where the signup trigger/backfill was not applied.
+        const { data: createdProfile, error: createProfileError } = await supabase
+          .from('profiles')
+          .insert({
+            id: userId,
+            email: userEmail || null,
+            full_name: userEmail || 'User',
+          })
+          .select('id, email, full_name, avatar_url')
+          .single();
+
+        if (createProfileError) {
+          throw createProfileError;
+        }
+
+        const nextProfile: Profile = {
+          id: createdProfile.id,
+          email: createdProfile.email,
+          fullName: createdProfile.full_name || createdProfile.email || 'User',
+          avatarUrl: createdProfile.avatar_url || '',
+        };
+        setProfile(nextProfile);
+        return nextProfile;
+      };
+
+      const createGroupDirectly = async () => {
+        const { data: groupRow, error: groupError } = await supabase
+          .from('groups')
+          .insert({
+            name: trimmedName,
+            description: trimmedDescription || null,
+            owner_id: userId,
+          })
+          .select(CREATE_GROUP_SELECT)
+          .single();
+        if (groupError) throw groupError;
+
+        const { error: memberError } = await supabase.from('group_members').insert({
+          group_id: groupRow.id,
+          user_id: userId,
+          role: 'owner',
+          is_active: true,
+        });
+        if (memberError) {
+          await supabase.from('groups').delete().eq('id', groupRow.id);
+          throw memberError;
+        }
+
+        return groupRow;
+      };
+
+      try {
+        await ensureProfileExists();
+
+        let data: any = null;
+        const { data: rpcData, error: rpcError } = await supabase
+          .rpc('create_group_with_owner', {
+            name_input: trimmedName,
+            description_input: trimmedDescription,
+          })
+          .maybeSingle();
+
+        if (rpcError) {
+          if (!isRecoverableCreateGroupRpcError(rpcError)) {
+            throw rpcError;
+          }
+          data = await createGroupDirectly();
+        } else {
+          data = rpcData as any;
+        }
+
+        if (!data?.id) {
+          throw new Error('Unable to create group due to an unexpected server response.');
+        }
+
+        const groupId = data.id;
+        if (groupId) {
+          const hydrated = await getGroup(groupId);
+          if (hydrated) return hydrated;
+        }
+
+        const normalized = normalizeGroup({
+          ...data,
+          group_members: [
+            {
+              user_id: userId,
+              role: 'owner',
+              is_active: true,
+              profiles: {
+                id: userId,
+                email: profile?.email || userEmail,
+                full_name: profile?.fullName || userEmail,
+                avatar_url: profile?.avatarUrl || '',
+              },
             },
-          },
-        ],
-      });
-      setGroups((prev) => [normalized, ...prev]);
-      return normalized;
+          ],
+        });
+        setGroups((prev) => [normalized, ...prev]);
+        return normalized;
+      } catch (error) {
+        throw new Error(normalizeCreateGroupError(error));
+      }
     },
-    [getGroup, profile?.avatarUrl, profile?.email, profile?.fullName, userEmail, userId]
+    [getGroup, loadProfile, profile, userEmail, userId]
   );
 
   const deleteGroup = useCallback(async (groupId: string) => {

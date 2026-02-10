@@ -9,6 +9,7 @@ import { Modal } from '../components/ui/Modal';
 import { GroupList } from '../components/groups/GroupList';
 import { GroupForm } from '../components/groups/GroupForm';
 import { useApp } from '../context/useApp';
+import { getErrorMessage } from '../utils/errors';
 
 export function HomePage() {
   const navigate = useNavigate();
@@ -36,7 +37,7 @@ export function HomePage() {
       setShowCreateModal(false);
       navigate(`/groups/${group.id}`);
     } catch (error) {
-      setCreateError(error instanceof Error ? error.message : 'Failed to create group.');
+      setCreateError(getErrorMessage(error, 'Failed to create group.'));
     }
   };
 
