@@ -175,9 +175,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
       .from('profiles')
       .select('id, email, full_name, avatar_url')
       .eq('id', userId)
-      .single();
+      .maybeSingle();
     if (error) {
       console.error('Failed to load profile:', error.message);
+      return null;
+    }
+    if (!data) {
       return null;
     }
     const nextProfile = {
@@ -294,29 +297,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
         const loadedProfile = await loadProfile();
         if (loadedProfile) return loadedProfile;
 
-        // Best-effort repair for projects where the signup trigger/backfill was not applied.
-        const { data: createdProfile, error: createProfileError } = await supabase
-          .from('profiles')
-          .insert({
-            id: userId,
-            email: userEmail || null,
-            full_name: userEmail || 'User',
-          })
-          .select('id, email, full_name, avatar_url')
-          .single();
-
-        if (createProfileError) {
-          throw createProfileError;
-        }
-
-        const nextProfile: Profile = {
-          id: createdProfile.id,
-          email: createdProfile.email,
-          fullName: createdProfile.full_name || createdProfile.email || 'User',
-          avatarUrl: createdProfile.avatar_url || '',
-        };
-        setProfile(nextProfile);
-        return nextProfile;
+        // Client inserts are blocked by RLS in this project; profile must exist via trigger/backfill.
+        throw new Error(
+          'Your account profile is missing in the database. ' +
+            'In Supabase SQL Editor, run the profile backfill from `supabase/schema.sql` (section: "Backfill profiles for existing users"), then try again.'
+        );
       };
 
       const createGroupDirectly = async () => {

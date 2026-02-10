@@ -1,5 +1,5 @@
 -- SplitEase Supabase schema (run in Supabase SQL editor)
--- NOTE: This will create tables, triggers, and RLS policies for multi-user sharing.
+-- Idempotent and backward-compatible with older enum-based schemas.
 
 create extension if not exists "pgcrypto";
 
@@ -8,9 +8,17 @@ create table if not exists public.profiles (
   id uuid primary key references auth.users(id) on delete cascade,
   email text unique,
   full_name text,
+  display_name text,
   avatar_url text,
   created_at timestamptz not null default now()
 );
+
+alter table public.profiles
+  add column if not exists display_name text;
+
+update public.profiles
+set display_name = coalesce(display_name, full_name, email, 'User')
+where display_name is null;
 
 -- Groups
 create table if not exists public.groups (
@@ -34,8 +42,23 @@ create table if not exists public.group_members (
 );
 
 alter table public.group_members
+  add column if not exists role text,
   add column if not exists is_active boolean not null default true,
   add column if not exists removed_at timestamptz;
+
+-- Convert legacy enum/varchar role columns to text.
+alter table public.group_members alter column role drop default;
+alter table public.group_members alter column role type text using role::text;
+
+update public.group_members
+set role = lower(coalesce(role, 'member'));
+
+update public.group_members
+set role = 'member'
+where role not in ('owner', 'admin', 'member');
+
+alter table public.group_members alter column role set not null;
+alter table public.group_members alter column role set default 'member';
 
 alter table public.group_members drop constraint if exists group_members_role_check;
 alter table public.group_members
@@ -55,6 +78,23 @@ create table if not exists public.group_invites (
   created_at timestamptz not null default now(),
   accepted_at timestamptz
 );
+
+alter table public.group_invites
+  add column if not exists status text not null default 'pending';
+
+-- Convert legacy enum/varchar status columns to text.
+alter table public.group_invites alter column status drop default;
+alter table public.group_invites alter column status type text using status::text;
+
+update public.group_invites
+set email = lower(trim(email)),
+    status = lower(coalesce(status, 'pending'));
+
+update public.group_invites
+set status = 'pending'
+where status not in ('pending', 'accepted', 'canceled');
+
+alter table public.group_invites alter column status set default 'pending';
 
 alter table public.group_invites drop constraint if exists group_invites_status_check;
 alter table public.group_invites
@@ -142,6 +182,11 @@ create trigger touch_group_on_members
 after insert or update or delete on public.group_members
 for each row execute procedure public.touch_group();
 
+drop trigger if exists touch_group_on_invites on public.group_invites;
+create trigger touch_group_on_invites
+after insert or update or delete on public.group_invites
+for each row execute procedure public.touch_group();
+
 create or replace function public.enforce_group_member_limit()
 returns trigger
 language plpgsql
@@ -157,6 +202,7 @@ begin
     ) then
       raise exception 'Cannot deactivate group owner';
     end if;
+
     if new.removed_at is null then
       new.removed_at = now();
     end if;
@@ -164,10 +210,12 @@ begin
 
   if new.is_active and (tg_op = 'INSERT' or (tg_op = 'UPDATE' and not old.is_active)) then
     new.removed_at = null;
+
     select count(*) into active_count
     from public.group_members
     where group_id = new.group_id
       and is_active;
+
     if active_count >= 10 then
       raise exception 'Group member limit reached (10).';
     end if;
@@ -182,21 +230,34 @@ create trigger enforce_group_member_limit
 before insert or update of is_active on public.group_members
 for each row execute procedure public.enforce_group_member_limit();
 
--- Create profile on signup
+-- Create profile on signup + auto-accept pending invites
 create or replace function public.handle_new_user()
 returns trigger
 language plpgsql
 security definer
-set search_path = public
+set search_path = public, auth
 as $$
+declare
+  invite record;
+  resolved_name text;
 begin
-  insert into public.profiles (id, email, full_name)
+  resolved_name := coalesce(
+    new.raw_user_meta_data->>'full_name',
+    new.raw_user_meta_data->>'name',
+    new.email
+  );
+
+  insert into public.profiles (id, email, full_name, display_name)
   values (
     new.id,
     new.email,
-    coalesce(new.raw_user_meta_data->>'full_name', new.raw_user_meta_data->>'name', new.email)
+    resolved_name,
+    coalesce(resolved_name, new.email, 'User')
   )
-  on conflict (id) do nothing;
+  on conflict (id) do update
+    set email = coalesce(excluded.email, public.profiles.email),
+        full_name = coalesce(public.profiles.full_name, excluded.full_name),
+        display_name = coalesce(public.profiles.display_name, excluded.display_name);
 
   for invite in
     select gi.id, gi.group_id
@@ -207,16 +268,19 @@ begin
     begin
       insert into public.group_members (group_id, user_id, role, is_active)
       values (invite.group_id, new.id, 'member', true)
-      on conflict (group_id, user_id) do update set is_active = true, removed_at = null;
+      on conflict (group_id, user_id) do update
+        set is_active = true,
+            removed_at = null;
 
       update public.group_invites
       set status = 'accepted', accepted_at = now()
       where id = invite.id;
     exception when others then
-      -- Ignore invite failures (e.g., member limit)
+      -- Ignore invite failures (for example, member limit reached)
       null;
     end;
   end loop;
+
   return new;
 end;
 $$;
@@ -227,12 +291,24 @@ after insert on auth.users
 for each row execute procedure public.handle_new_user();
 
 -- Backfill profiles for existing users (safe to re-run)
-insert into public.profiles (id, email, full_name)
-select id,
-       email,
-       coalesce(raw_user_meta_data->>'full_name', raw_user_meta_data->>'name', email)
-from auth.users
-on conflict (id) do nothing;
+insert into public.profiles (id, email, full_name, display_name)
+select
+  u.id,
+  u.email,
+  coalesce(u.raw_user_meta_data->>'full_name', u.raw_user_meta_data->>'name', u.email),
+  coalesce(u.raw_user_meta_data->>'full_name', u.raw_user_meta_data->>'name', u.email, 'User')
+from auth.users u
+on conflict (id) do update
+  set email = coalesce(excluded.email, public.profiles.email),
+      full_name = coalesce(public.profiles.full_name, excluded.full_name),
+      display_name = coalesce(public.profiles.display_name, excluded.display_name);
+
+-- Drop helper functions first so parameter-name mismatches in legacy DBs do not fail reruns.
+drop function if exists public.find_profile_by_email(text);
+drop function if exists public.is_group_member(uuid, uuid) cascade;
+drop function if exists public.is_group_admin(uuid, uuid) cascade;
+drop function if exists public.create_group_with_owner(text, text) cascade;
+drop function if exists public.create_group_invite(uuid, text) cascade;
 
 -- Helper RPC: lookup user by email (for invites)
 create or replace function public.find_profile_by_email(email_input text)
@@ -241,14 +317,15 @@ language sql
 security definer
 set search_path = public
 as $$
-  select id, email, full_name
-  from public.profiles
-  where lower(email) = lower(email_input)
+  select p.id,
+         p.email,
+         coalesce(p.display_name, p.full_name, p.email) as full_name
+  from public.profiles p
+  where lower(p.email) = lower(email_input)
   limit 1;
 $$;
 
 grant execute on function public.find_profile_by_email(text) to authenticated;
-
 
 -- Enable RLS
 alter table public.profiles enable row level security;
@@ -262,6 +339,7 @@ alter table public.settlements enable row level security;
 create or replace function public.is_group_member(gid uuid, uid uuid)
 returns boolean
 language sql
+stable
 security definer
 set search_path = public
 as $$
@@ -278,6 +356,7 @@ grant execute on function public.is_group_member(uuid, uuid) to authenticated;
 create or replace function public.is_group_admin(gid uuid, uid uuid)
 returns boolean
 language sql
+stable
 security definer
 set search_path = public
 as $$
@@ -312,17 +391,37 @@ returns table (
 )
 language plpgsql
 security definer
-set search_path = public
+set search_path = public, auth
 as $$
 declare
   new_group public.groups%rowtype;
+  owner_email text;
+  owner_name text;
 begin
   if auth.uid() is null then
     raise exception 'Not authenticated';
   end if;
 
+  select u.email,
+         coalesce(u.raw_user_meta_data->>'full_name', u.raw_user_meta_data->>'name', u.email)
+    into owner_email, owner_name
+  from auth.users u
+  where u.id = auth.uid();
+
+  insert into public.profiles (id, email, full_name, display_name)
+  values (
+    auth.uid(),
+    owner_email,
+    owner_name,
+    coalesce(owner_name, owner_email, 'User')
+  )
+  on conflict on constraint profiles_pkey do update
+    set email = coalesce(excluded.email, public.profiles.email),
+        full_name = coalesce(public.profiles.full_name, excluded.full_name),
+        display_name = coalesce(public.profiles.display_name, excluded.display_name);
+
   insert into public.groups (name, description, owner_id)
-  values (name_input, nullif(trim(description_input), ''), auth.uid())
+  values (trim(name_input), nullif(trim(description_input), ''), auth.uid())
   returning * into new_group;
 
   insert into public.group_members (group_id, user_id, role, is_active)
@@ -333,12 +432,13 @@ begin
         role = 'owner';
 
   return query
-  select new_group.id,
-         new_group.name,
-         new_group.description,
-         new_group.owner_id,
-         new_group.created_at,
-         new_group.updated_at;
+  select
+    new_group.id,
+    new_group.name,
+    new_group.description,
+    new_group.owner_id,
+    new_group.created_at,
+    new_group.updated_at;
 end;
 $$;
 
@@ -351,10 +451,18 @@ security definer
 set search_path = public
 as $$
 declare
-  normalized_email text := lower(trim(email_input));
+  normalized_email text := lower(trim(coalesce(email_input, '')));
   existing_profile uuid;
   existing_invite uuid;
 begin
+  if auth.uid() is null then
+    raise exception 'Not authenticated';
+  end if;
+
+  if normalized_email = '' then
+    raise exception 'Email is required';
+  end if;
+
   if not public.is_group_admin(group_id_input, auth.uid()) then
     raise exception 'Not authorized';
   end if;
@@ -367,7 +475,9 @@ begin
   if existing_profile is not null then
     insert into public.group_members (group_id, user_id, role, is_active)
     values (group_id_input, existing_profile, 'member', true)
-    on conflict (group_id, user_id) do update set is_active = true, removed_at = null;
+    on conflict (group_id, user_id) do update
+      set is_active = true,
+          removed_at = null;
 
     return query select null::uuid, 'member_added'::text;
     return;
@@ -385,6 +495,7 @@ begin
     return;
   end if;
 
+  return query
   insert into public.group_invites (group_id, email, invited_by, status)
   values (group_id_input, normalized_email, auth.uid(), 'pending')
   returning public.group_invites.id, public.group_invites.status;
@@ -406,7 +517,9 @@ for select using (
     from public.group_members gm1
     join public.group_members gm2 on gm1.group_id = gm2.group_id
     where gm1.user_id = auth.uid()
+      and gm1.is_active
       and gm2.user_id = public.profiles.id
+      and gm2.is_active
   )
 );
 
@@ -437,6 +550,7 @@ create policy "Members: group members can read" on public.group_members
 for select using (public.is_group_member(public.group_members.group_id, auth.uid()));
 
 drop policy if exists "Members: group members can add" on public.group_members;
+drop policy if exists "Members: admins can add" on public.group_members;
 create policy "Members: admins can add" on public.group_members
 for insert with check (
   public.is_group_admin(public.group_members.group_id, auth.uid())
