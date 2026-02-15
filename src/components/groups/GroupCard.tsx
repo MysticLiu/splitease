@@ -14,11 +14,17 @@ export function GroupCard({ group }: { group: Group }) {
 
   const expenses = expensesByGroup[group.id] || [];
   const settlements = settlementsByGroup[group.id] || [];
+  const hasLoadedExpenses = Boolean(expensesByGroup[group.id]);
+  const hasLoadedSettlements = Boolean(settlementsByGroup[group.id]);
 
   useEffect(() => {
-    getGroupExpenses(group.id);
-    getGroupSettlements(group.id);
-  }, [group.id, getGroupExpenses, getGroupSettlements]);
+    if (!hasLoadedExpenses) {
+      void getGroupExpenses(group.id);
+    }
+    if (!hasLoadedSettlements) {
+      void getGroupSettlements(group.id);
+    }
+  }, [group.id, hasLoadedExpenses, hasLoadedSettlements, getGroupExpenses, getGroupSettlements]);
   const activeMembers = group.members.filter((member) => member.isActive);
   const balances = calculateBalances(expenses, settlements, group.members);
   const totalOwed = getTotalOwed(balances);

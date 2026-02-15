@@ -5,17 +5,14 @@ import { Plus, Users, Receipt, Wallet } from 'lucide-react';
 import { Header } from '../components/layout/Header';
 import { PageContainer } from '../components/layout/PageContainer';
 import { Button } from '../components/ui/Button';
-import { Modal } from '../components/ui/Modal';
 import { GroupList } from '../components/groups/GroupList';
-import { GroupForm } from '../components/groups/GroupForm';
+import { CreateGroupModal } from '../components/groups/CreateGroupModal';
 import { useApp } from '../context/useApp';
-import { getErrorMessage } from '../utils/errors';
 
 export function HomePage() {
   const navigate = useNavigate();
-  const { getGroups, createGroup, getTotals, expensesByGroup, settlementsByGroup } = useApp();
+  const { getGroups, getTotals, expensesByGroup, settlementsByGroup } = useApp();
   const [showCreateModal, setShowCreateModal] = useState(false);
-  const [createError, setCreateError] = useState<string | null>(null);
   const [stats, setStats] = useState({ expenses: 0, settlements: 0 });
 
   const groups = getGroups();
@@ -29,17 +26,6 @@ export function HomePage() {
       mounted = false;
     };
   }, [getTotals, expensesByGroup, settlementsByGroup]);
-
-  const handleCreateGroup = async ({ name, description }: { name: string; description: string }) => {
-    setCreateError(null);
-    try {
-      const group = await createGroup(name, description);
-      setShowCreateModal(false);
-      navigate(`/groups/${group.id}`);
-    } catch (error) {
-      setCreateError(getErrorMessage(error, 'Failed to create group.'));
-    }
-  };
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -95,20 +81,11 @@ export function HomePage() {
         </div>
       </PageContainer>
 
-      {/* Create group modal */}
-      <Modal
+      <CreateGroupModal
         isOpen={showCreateModal}
         onClose={() => setShowCreateModal(false)}
-        title="Create New Group"
-      >
-        <GroupForm
-          onSubmit={handleCreateGroup}
-          onCancel={() => setShowCreateModal(false)}
-        />
-        {createError && (
-          <p className="mt-3 text-sm text-red-600">{createError}</p>
-        )}
-      </Modal>
+        onCreated={(group) => navigate(`/groups/${group.id}`)}
+      />
     </div>
   );
 }

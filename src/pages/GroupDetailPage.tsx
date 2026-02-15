@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Plus, Settings, Trash2 } from 'lucide-react';
@@ -20,6 +20,7 @@ import { GroupMembersManager } from '../components/groups/GroupMembersManager';
 import { useApp } from '../context/useApp';
 import { calculateBalances } from '../utils/balanceCalculator';
 import { simplifyDebts } from '../utils/debtSimplifier';
+import { getErrorMessage } from '../utils/errors';
 import type { Debt, Expense, ExpenseSplit, Group, Invite, Settlement, SplitType } from '../types';
 
 type ActiveTab = 'expenses' | 'balances' | 'settle';
@@ -74,16 +75,10 @@ export function GroupDetailPage() {
   const [loadingInvites, setLoadingInvites] = useState(false);
   const [isAddingExpense, setIsAddingExpense] = useState(false);
   const [isEditingExpense, setIsEditingExpense] = useState(false);
+  const [isSettling, setIsSettling] = useState(false);
   const [deletingExpenseId, setDeletingExpenseId] = useState<string | null>(null);
   const [deletingSettlementId, setDeletingSettlementId] = useState<string | null>(null);
   const [isDeletingGroup, setIsDeletingGroup] = useState(false);
-
-  const addExpenseLock = useRef(false);
-  const editExpenseLock = useRef(false);
-  const deleteExpenseLock = useRef(false);
-  const settleLock = useRef(false);
-  const deleteSettlementLock = useRef(false);
-  const deleteGroupLock = useRef(false);
 
   const expenses: Expense[] = expensesByGroup[groupId] ?? EMPTY_EXPENSES;
   const settlements: Settlement[] = settlementsByGroup[groupId] ?? EMPTY_SETTLEMENTS;
@@ -173,25 +168,22 @@ export function GroupDetailPage() {
   const activeMembers = group.members.filter((member) => member.isActive);
 
   const handleAddExpense = async (data: ExpenseFormPayload) => {
-    if (addExpenseLock.current) return;
-    addExpenseLock.current = true;
+    if (isAddingExpense) return;
     setIsAddingExpense(true);
     setActionError(null);
     try {
       await createExpense(groupId, data.description, data.amount, data.paidBy, data.splitType, data.splits);
       setShowExpenseModal(false);
     } catch (error) {
-      setActionError(error instanceof Error ? error.message : 'Failed to add expense.');
+      setActionError(getErrorMessage(error, 'Failed to add expense.'));
     } finally {
-      addExpenseLock.current = false;
       setIsAddingExpense(false);
     }
   };
 
   const handleEditExpense = async (data: ExpenseFormPayload) => {
     if (!editingExpense) return;
-    if (editExpenseLock.current) return;
-    editExpenseLock.current = true;
+    if (isEditingExpense) return;
     setIsEditingExpense(true);
     setActionError(null);
     try {
@@ -204,68 +196,61 @@ export function GroupDetailPage() {
       });
       setEditingExpense(null);
     } catch (error) {
-      setActionError(error instanceof Error ? error.message : 'Failed to update expense.');
+      setActionError(getErrorMessage(error, 'Failed to update expense.'));
     } finally {
-      editExpenseLock.current = false;
       setIsEditingExpense(false);
     }
   };
 
   const handleDeleteExpense = async (expenseId: string) => {
-    if (deleteExpenseLock.current) return;
-    deleteExpenseLock.current = true;
+    if (deletingExpenseId) return;
     setDeletingExpenseId(expenseId);
     setActionError(null);
     try {
       await deleteExpense(expenseId, groupId);
     } catch (error) {
-      setActionError(error instanceof Error ? error.message : 'Failed to delete expense.');
+      setActionError(getErrorMessage(error, 'Failed to delete expense.'));
     } finally {
-      deleteExpenseLock.current = false;
       setDeletingExpenseId(null);
     }
   };
 
   const handleSettle = async (fromId: string, toId: string, amount: number) => {
-    if (settleLock.current) return;
-    settleLock.current = true;
+    if (isSettling) return;
+    setIsSettling(true);
     setActionError(null);
     try {
       await createSettlement(groupId, fromId, toId, amount);
     } catch (error) {
-      setActionError(error instanceof Error ? error.message : 'Failed to record settlement.');
+      setActionError(getErrorMessage(error, 'Failed to record settlement.'));
     } finally {
-      settleLock.current = false;
+      setIsSettling(false);
     }
   };
 
   const handleDeleteSettlement = async (settlementId: string) => {
-    if (deleteSettlementLock.current) return;
-    deleteSettlementLock.current = true;
+    if (deletingSettlementId) return;
     setDeletingSettlementId(settlementId);
     setActionError(null);
     try {
       await deleteSettlement(settlementId, groupId);
     } catch (error) {
-      setActionError(error instanceof Error ? error.message : 'Failed to delete settlement.');
+      setActionError(getErrorMessage(error, 'Failed to delete settlement.'));
     } finally {
-      deleteSettlementLock.current = false;
       setDeletingSettlementId(null);
     }
   };
 
   const handleDeleteGroup = async () => {
-    if (deleteGroupLock.current) return;
-    deleteGroupLock.current = true;
+    if (isDeletingGroup) return;
     setIsDeletingGroup(true);
     setActionError(null);
     try {
       await deleteGroup(groupId);
       navigate('/');
     } catch (error) {
-      setActionError(error instanceof Error ? error.message : 'Failed to delete group.');
+      setActionError(getErrorMessage(error, 'Failed to delete group.'));
     } finally {
-      deleteGroupLock.current = false;
       setIsDeletingGroup(false);
     }
   };
