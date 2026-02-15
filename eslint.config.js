@@ -22,7 +22,7 @@ const baseRules = {
 export default [
   {
     files: ['**/*.{js,jsx}'],
-    ignores: ['dist/**', 'node_modules/**'],
+    ignores: ['dist/**', 'node_modules/**', 'test-results/**', 'playwright-report/**'],
     languageOptions: {
       ecmaVersion: 2020,
       globals: globals.browser,
@@ -42,7 +42,7 @@ export default [
   },
   {
     files: ['**/*.{ts,tsx}'],
-    ignores: ['dist/**', 'node_modules/**'],
+    ignores: ['dist/**', 'node_modules/**', 'test-results/**', 'playwright-report/**'],
     languageOptions: {
       ecmaVersion: 2020,
       globals: globals.browser,

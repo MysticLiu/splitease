@@ -39,6 +39,13 @@ Split expenses with friends, roommates, or groups using React + Supabase.
 npm run typecheck
 ```
 
+## Tests
+```bash
+npm run test
+npm run test:unit
+npm run test:integration
+```
+
 ## E2E tests (Playwright)
 1. Install browsers:
    ```bash
@@ -52,6 +59,18 @@ npm run typecheck
    ```bash
    npm run test:e2e
    ```
+
+### Core CI E2E
+- CI runs only core journeys tagged with `@core`:
+  ```bash
+  npm run test:e2e:ci
+  ```
+- Required CI secrets/env:
+  - `VITE_SUPABASE_URL`
+  - `VITE_SUPABASE_ANON_KEY`
+  - `E2E_EMAIL`
+  - `E2E_PASSWORD`
+  - `E2E_MEMBER_EMAIL`
 
 ### CI behavior
 - In CI, Playwright now requires `E2E_EMAIL`, `E2E_PASSWORD`, and `E2E_MEMBER_EMAIL`.

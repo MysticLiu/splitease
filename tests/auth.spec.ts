@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { signIn } from './utils';
 
-test('signup shows confirmation message', async ({ page }) => {
+test('@extended signup shows confirmation message', async ({ page }) => {
   test.skip(process.env.E2E_ALLOW_SIGNUP !== 'true', 'Set E2E_ALLOW_SIGNUP=true to run this test.');
 
   await page.goto('/auth');
@@ -19,7 +19,7 @@ test('signup shows confirmation message', async ({ page }) => {
   ).toBeVisible();
 });
 
-test('sign in with existing account', async ({ page }) => {
+test('@core sign in with existing account', async ({ page }) => {
   const email = process.env.E2E_EMAIL;
   const password = process.env.E2E_PASSWORD;
   if (!email || !password) {
