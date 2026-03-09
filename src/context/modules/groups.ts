@@ -41,6 +41,16 @@ const isRecoverableCreateGroupRpcError = (error: unknown) => {
 
   const message = getErrorMessage(error, '').toLowerCase();
   if (!message) return false;
+
+  if (
+    message.includes('on conflict specification') ||
+    message.includes('unique or exclusion constraint') ||
+    message.includes('profiles_pkey') ||
+    message.includes('group_members')
+  ) {
+    return true;
+  }
+
   if (!message.includes('create_group_with_owner')) return false;
 
   return (
@@ -71,6 +81,17 @@ const normalizeCreateGroupError = (error: unknown) => {
   ) {
     return (
       'Database permissions are not configured correctly for group creation. ' +
+      'Please re-apply `supabase/schema.sql` in your Supabase project.'
+    );
+  }
+
+  if (
+    message.includes('on conflict specification') ||
+    message.includes('unique or exclusion constraint') ||
+    message.includes('profiles_pkey')
+  ) {
+    return (
+      'Your Supabase schema is out of sync with the app and is missing a required conflict target for group creation. ' +
       'Please re-apply `supabase/schema.sql` in your Supabase project.'
     );
   }

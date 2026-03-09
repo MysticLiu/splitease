@@ -79,7 +79,6 @@ export function useSettlementsDomain({ userId }: SettlementsDomainArgs): Settlem
           from_user_id: fromMemberId,
           to_user_id: toMemberId,
           amount,
-          created_by: userId,
         })
         .select('*')
         .single();

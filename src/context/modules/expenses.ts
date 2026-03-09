@@ -70,7 +70,6 @@ export function useExpensesDomain({ userId }: ExpensesDomainArgs): ExpensesDomai
           paid_by: paidBy,
           split_type: splitType,
           splits,
-          created_by: userId,
         })
         .select('*')
         .single();

@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { createGroup, signIn } from './utils';
 
-test('core flow: group, expense, optional settlement', async ({ page }) => {
+test('@core core flow: group, expense, optional settlement', async ({ page }) => {
   const email = process.env.E2E_EMAIL;
   const password = process.env.E2E_PASSWORD;
   const memberEmail = process.env.E2E_MEMBER_EMAIL;
