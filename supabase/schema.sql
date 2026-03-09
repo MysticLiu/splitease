@@ -123,6 +123,26 @@ create table if not exists public.expenses (
   updated_at timestamptz not null default now()
 );
 
+alter table public.expenses drop constraint if exists expenses_amount_positive_check;
+alter table public.expenses
+  add constraint expenses_amount_positive_check check (amount > 0);
+
+alter table public.expenses drop constraint if exists expenses_description_present_check;
+alter table public.expenses
+  add constraint expenses_description_present_check check (char_length(btrim(description)) > 0);
+
+alter table public.expenses drop constraint if exists expenses_description_length_check;
+alter table public.expenses
+  add constraint expenses_description_length_check check (char_length(btrim(description)) <= 100);
+
+alter table public.expenses drop constraint if exists expenses_split_type_check;
+alter table public.expenses
+  add constraint expenses_split_type_check check (split_type in ('equal', 'custom', 'percentage'));
+
+alter table public.expenses drop constraint if exists expenses_splits_array_check;
+alter table public.expenses
+  add constraint expenses_splits_array_check check (jsonb_typeof(splits) = 'array');
+
 -- Settlements
 create table if not exists public.settlements (
   id uuid primary key default gen_random_uuid(),
@@ -133,6 +153,14 @@ create table if not exists public.settlements (
   created_by uuid not null references public.profiles(id) on delete restrict,
   created_at timestamptz not null default now()
 );
+
+alter table public.settlements drop constraint if exists settlements_amount_positive_check;
+alter table public.settlements
+  add constraint settlements_amount_positive_check check (amount > 0);
+
+alter table public.settlements drop constraint if exists settlements_distinct_users_check;
+alter table public.settlements
+  add constraint settlements_distinct_users_check check (from_user_id <> to_user_id);
 
 -- Keep updated_at fresh
 create or replace function public.set_updated_at()
@@ -230,6 +258,95 @@ create trigger enforce_group_member_limit
 before insert or update of is_active on public.group_members
 for each row execute procedure public.enforce_group_member_limit();
 
+create or replace function public.upsert_profile_row(
+  profile_id_input uuid,
+  email_input text,
+  full_name_input text,
+  display_name_input text
+)
+returns void
+language plpgsql
+set search_path = public
+as $$
+begin
+  update public.profiles p
+  set email = coalesce(email_input, p.email),
+      full_name = coalesce(p.full_name, full_name_input),
+      display_name = coalesce(p.display_name, display_name_input)
+  where p.id = profile_id_input;
+
+  if found then
+    return;
+  end if;
+
+  begin
+    insert into public.profiles (id, email, full_name, display_name)
+    values (
+      profile_id_input,
+      email_input,
+      full_name_input,
+      coalesce(display_name_input, full_name_input, email_input, 'User')
+    );
+  exception when unique_violation then
+    update public.profiles p
+    set email = coalesce(email_input, p.email),
+        full_name = coalesce(p.full_name, full_name_input),
+        display_name = coalesce(p.display_name, display_name_input)
+    where p.id = profile_id_input;
+  end;
+end;
+$$;
+
+create or replace function public.upsert_group_member_row(
+  group_id_input uuid,
+  user_id_input uuid,
+  role_input text default null,
+  is_active_input boolean default true
+)
+returns void
+language plpgsql
+set search_path = public
+as $$
+declare
+  next_is_active boolean := coalesce(is_active_input, true);
+begin
+  update public.group_members gm
+  set role = coalesce(role_input, gm.role),
+      is_active = next_is_active,
+      removed_at = case
+        when next_is_active then null
+        else coalesce(gm.removed_at, now())
+      end
+  where gm.group_id = group_id_input
+    and gm.user_id = user_id_input;
+
+  if found then
+    return;
+  end if;
+
+  begin
+    insert into public.group_members (group_id, user_id, role, is_active, removed_at)
+    values (
+      group_id_input,
+      user_id_input,
+      coalesce(role_input, 'member'),
+      next_is_active,
+      case when next_is_active then null else now() end
+    );
+  exception when unique_violation then
+    update public.group_members gm
+    set role = coalesce(role_input, gm.role),
+        is_active = next_is_active,
+        removed_at = case
+          when next_is_active then null
+          else coalesce(gm.removed_at, now())
+        end
+    where gm.group_id = group_id_input
+      and gm.user_id = user_id_input;
+  end;
+end;
+$$;
+
 -- Create profile on signup + auto-accept pending invites
 create or replace function public.handle_new_user()
 returns trigger
@@ -247,17 +364,12 @@ begin
     new.email
   );
 
-  insert into public.profiles (id, email, full_name, display_name)
-  values (
+  perform public.upsert_profile_row(
     new.id,
     new.email,
     resolved_name,
     coalesce(resolved_name, new.email, 'User')
-  )
-  on conflict (id) do update
-    set email = coalesce(excluded.email, public.profiles.email),
-        full_name = coalesce(public.profiles.full_name, excluded.full_name),
-        display_name = coalesce(public.profiles.display_name, excluded.display_name);
+  );
 
   for invite in
     select gi.id, gi.group_id
@@ -266,11 +378,7 @@ begin
       and lower(gi.email) = lower(new.email)
   loop
     begin
-      insert into public.group_members (group_id, user_id, role, is_active)
-      values (invite.group_id, new.id, 'member', true)
-      on conflict (group_id, user_id) do update
-        set is_active = true,
-            removed_at = null;
+      perform public.upsert_group_member_row(invite.group_id, new.id, null, true);
 
       update public.group_invites
       set status = 'accepted', accepted_at = now()
@@ -291,20 +399,31 @@ after insert on auth.users
 for each row execute procedure public.handle_new_user();
 
 -- Backfill profiles for existing users (safe to re-run)
-insert into public.profiles (id, email, full_name, display_name)
-select
-  u.id,
-  u.email,
-  coalesce(u.raw_user_meta_data->>'full_name', u.raw_user_meta_data->>'name', u.email),
-  coalesce(u.raw_user_meta_data->>'full_name', u.raw_user_meta_data->>'name', u.email, 'User')
-from auth.users u
-on conflict (id) do update
-  set email = coalesce(excluded.email, public.profiles.email),
-      full_name = coalesce(public.profiles.full_name, excluded.full_name),
-      display_name = coalesce(public.profiles.display_name, excluded.display_name);
+do $$
+declare
+  user_row record;
+begin
+  for user_row in
+    select
+      u.id,
+      u.email,
+      coalesce(u.raw_user_meta_data->>'full_name', u.raw_user_meta_data->>'name', u.email) as full_name,
+      coalesce(u.raw_user_meta_data->>'full_name', u.raw_user_meta_data->>'name', u.email, 'User') as display_name
+    from auth.users u
+  loop
+    perform public.upsert_profile_row(
+      user_row.id,
+      user_row.email,
+      user_row.full_name,
+      user_row.display_name
+    );
+  end loop;
+end;
+$$;
 
 -- Drop helper functions first so parameter-name mismatches in legacy DBs do not fail reruns.
 drop function if exists public.find_profile_by_email(text);
+drop function if exists public.has_group_member(uuid, uuid) cascade;
 drop function if exists public.is_group_member(uuid, uuid) cascade;
 drop function if exists public.is_group_admin(uuid, uuid) cascade;
 drop function if exists public.create_group_with_owner(text, text) cascade;
@@ -352,6 +471,22 @@ as $$
 $$;
 
 grant execute on function public.is_group_member(uuid, uuid) to authenticated;
+
+create or replace function public.has_group_member(gid uuid, uid uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select exists (
+    select 1 from public.group_members gm
+    where gm.group_id = gid
+      and gm.user_id = uid
+  );
+$$;
+
+grant execute on function public.has_group_member(uuid, uuid) to authenticated;
 
 create or replace function public.is_group_admin(gid uuid, uid uuid)
 returns boolean
@@ -408,28 +543,18 @@ begin
   from auth.users u
   where u.id = auth.uid();
 
-  insert into public.profiles (id, email, full_name, display_name)
-  values (
+  perform public.upsert_profile_row(
     auth.uid(),
     owner_email,
     owner_name,
     coalesce(owner_name, owner_email, 'User')
-  )
-  on conflict on constraint profiles_pkey do update
-    set email = coalesce(excluded.email, public.profiles.email),
-        full_name = coalesce(public.profiles.full_name, excluded.full_name),
-        display_name = coalesce(public.profiles.display_name, excluded.display_name);
+  );
 
   insert into public.groups (name, description, owner_id)
   values (trim(name_input), nullif(trim(description_input), ''), auth.uid())
   returning * into new_group;
 
-  insert into public.group_members (group_id, user_id, role, is_active)
-  values (new_group.id, auth.uid(), 'owner', true)
-  on conflict (group_id, user_id) do update
-    set is_active = true,
-        removed_at = null,
-        role = 'owner';
+  perform public.upsert_group_member_row(new_group.id, auth.uid(), 'owner', true);
 
   return query
   select
@@ -473,11 +598,7 @@ begin
   limit 1;
 
   if existing_profile is not null then
-    insert into public.group_members (group_id, user_id, role, is_active)
-    values (group_id_input, existing_profile, 'member', true)
-    on conflict (group_id, user_id) do update
-      set is_active = true,
-          removed_at = null;
+    perform public.upsert_group_member_row(group_id_input, existing_profile, null, true);
 
     return query select null::uuid, 'member_added'::text;
     return;
@@ -503,6 +624,221 @@ end;
 $$;
 
 grant execute on function public.create_group_invite(uuid, text) to authenticated;
+
+create or replace function public.validate_expense_row()
+returns trigger
+language plpgsql
+set search_path = public, auth
+as $$
+declare
+  split jsonb;
+  seen_member_ids text[] := array[]::text[];
+  member_id_text text;
+  member_id uuid;
+  split_amount_numeric numeric;
+  split_percentage numeric;
+  included_count int := 0;
+  custom_total int := 0;
+  percentage_total numeric := 0;
+begin
+  if tg_op = 'INSERT' then
+    if auth.uid() is not null then
+      new.created_by := auth.uid();
+    end if;
+  else
+    if new.group_id is distinct from old.group_id then
+      raise exception 'Expense group cannot be changed.';
+    end if;
+    new.created_by := old.created_by;
+  end if;
+
+  new.description := btrim(coalesce(new.description, ''));
+  new.split_type := lower(btrim(coalesce(new.split_type, '')));
+  new.splits := coalesce(new.splits, '[]'::jsonb);
+
+  if new.group_id is null then
+    raise exception 'Expense group is required.';
+  end if;
+
+  if new.description = '' then
+    raise exception 'Expense description is required.';
+  end if;
+
+  if char_length(new.description) > 100 then
+    raise exception 'Expense description must be 100 characters or less.';
+  end if;
+
+  if new.amount is null or new.amount <= 0 then
+    raise exception 'Expense amount must be greater than zero.';
+  end if;
+
+  if new.split_type not in ('equal', 'custom', 'percentage') then
+    raise exception 'Expense split type must be equal, custom, or percentage.';
+  end if;
+
+  if coalesce(jsonb_typeof(new.splits), '') <> 'array' then
+    raise exception 'Expense splits must be an array.';
+  end if;
+
+  if new.created_by is null then
+    raise exception 'Expense creator is required.';
+  end if;
+
+  if not public.has_group_member(new.group_id, new.created_by) then
+    raise exception 'Expense creator must belong to the group.';
+  end if;
+
+  if new.paid_by is null then
+    raise exception 'Expense payer is required.';
+  end if;
+
+  if not public.has_group_member(new.group_id, new.paid_by) then
+    raise exception 'Expense payer must belong to the group.';
+  end if;
+
+  for split in
+    select value
+    from jsonb_array_elements(new.splits)
+  loop
+    if jsonb_typeof(split) <> 'object' then
+      raise exception 'Each expense split must be an object.';
+    end if;
+
+    member_id_text := btrim(coalesce(split->>'memberId', ''));
+    if member_id_text = '' then
+      raise exception 'Each expense split must include memberId.';
+    end if;
+
+    if member_id_text !~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' then
+      raise exception 'Expense split memberId must be a valid UUID.';
+    end if;
+
+    if member_id_text = any(seen_member_ids) then
+      raise exception 'Expense splits cannot include the same member more than once.';
+    end if;
+    seen_member_ids := array_append(seen_member_ids, member_id_text);
+
+    member_id := member_id_text::uuid;
+    if not public.has_group_member(new.group_id, member_id) then
+      raise exception 'Expense split members must belong to the group.';
+    end if;
+
+    if coalesce(jsonb_typeof(split->'isIncluded'), '') <> 'boolean' then
+      raise exception 'Each expense split must include a boolean isIncluded value.';
+    end if;
+
+    if new.split_type = 'custom' then
+      if coalesce(jsonb_typeof(split->'amount'), '') <> 'number' then
+        raise exception 'Custom expense splits must include a numeric amount.';
+      end if;
+
+      split_amount_numeric := (split->>'amount')::numeric;
+      if split_amount_numeric <> trunc(split_amount_numeric) then
+        raise exception 'Custom split amounts must be whole cents.';
+      end if;
+      if split_amount_numeric < 0 then
+        raise exception 'Custom split amounts cannot be negative.';
+      end if;
+    elsif new.split_type = 'percentage' then
+      if coalesce(jsonb_typeof(split->'percentage'), '') <> 'number' then
+        raise exception 'Percentage expense splits must include a numeric percentage.';
+      end if;
+
+      split_percentage := (split->>'percentage')::numeric;
+      if split_percentage < 0 or split_percentage > 100 then
+        raise exception 'Split percentages must be between 0 and 100.';
+      end if;
+    end if;
+
+    if (split->>'isIncluded')::boolean then
+      included_count := included_count + 1;
+
+      if new.split_type = 'custom' then
+        custom_total := custom_total + split_amount_numeric::int;
+      elsif new.split_type = 'percentage' then
+        percentage_total := percentage_total + split_percentage;
+      end if;
+    end if;
+  end loop;
+
+  if included_count = 0 then
+    raise exception 'At least one group member must be included in an expense split.';
+  end if;
+
+  if new.split_type = 'custom' and custom_total <> new.amount then
+    raise exception 'Custom split amounts must add up to the full expense amount.';
+  end if;
+
+  if new.split_type = 'percentage' and abs(percentage_total - 100::numeric) > 0.01 then
+    raise exception 'Percentage splits must add up to 100.';
+  end if;
+
+  return new;
+end;
+$$;
+
+drop trigger if exists validate_expense_row on public.expenses;
+create trigger validate_expense_row
+before insert or update on public.expenses
+for each row execute procedure public.validate_expense_row();
+
+create or replace function public.validate_settlement_row()
+returns trigger
+language plpgsql
+set search_path = public, auth
+as $$
+begin
+  if tg_op = 'INSERT' then
+    if auth.uid() is not null then
+      new.created_by := auth.uid();
+    end if;
+  else
+    if new.group_id is distinct from old.group_id then
+      raise exception 'Settlement group cannot be changed.';
+    end if;
+    new.created_by := old.created_by;
+  end if;
+
+  if new.group_id is null then
+    raise exception 'Settlement group is required.';
+  end if;
+
+  if new.created_by is null then
+    raise exception 'Settlement creator is required.';
+  end if;
+
+  if new.amount is null or new.amount <= 0 then
+    raise exception 'Settlement amount must be greater than zero.';
+  end if;
+
+  if new.from_user_id is null or new.to_user_id is null then
+    raise exception 'Settlement participants are required.';
+  end if;
+
+  if new.from_user_id = new.to_user_id then
+    raise exception 'Settlement payer and recipient must be different group members.';
+  end if;
+
+  if not public.has_group_member(new.group_id, new.created_by) then
+    raise exception 'Settlement creator must belong to the group.';
+  end if;
+
+  if not public.has_group_member(new.group_id, new.from_user_id) then
+    raise exception 'Settlement payer must belong to the group.';
+  end if;
+
+  if not public.has_group_member(new.group_id, new.to_user_id) then
+    raise exception 'Settlement recipient must belong to the group.';
+  end if;
+
+  return new;
+end;
+$$;
+
+drop trigger if exists validate_settlement_row on public.settlements;
+create trigger validate_settlement_row
+before insert or update on public.settlements
+for each row execute procedure public.validate_settlement_row();
 
 -- Profiles policies
 drop policy if exists "Profiles: read own" on public.profiles;
