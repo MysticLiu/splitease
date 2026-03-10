@@ -266,6 +266,7 @@ create or replace function public.upsert_profile_row(
 )
 returns void
 language plpgsql
+security definer
 set search_path = public
 as $$
 begin
@@ -305,6 +306,7 @@ create or replace function public.upsert_group_member_row(
 )
 returns void
 language plpgsql
+security definer
 set search_path = public
 as $$
 declare

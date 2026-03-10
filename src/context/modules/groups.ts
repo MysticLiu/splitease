@@ -43,6 +43,16 @@ const isRecoverableCreateGroupRpcError = (error: unknown) => {
   if (!message) return false;
 
   if (
+    message.includes('upsert_profile_row') ||
+    message.includes('upsert_group_member_row') ||
+    message.includes('permission denied for function') ||
+    message.includes('permission denied for table users') ||
+    message.includes('permission denied for schema auth')
+  ) {
+    return true;
+  }
+
+  if (
     message.includes('on conflict specification') ||
     message.includes('unique or exclusion constraint') ||
     message.includes('profiles_pkey') ||
@@ -70,6 +80,19 @@ const normalizeCreateGroupError = (error: unknown) => {
     return (
       'Your account profile is missing in the database. ' +
       'In Supabase SQL Editor, re-run `supabase/schema.sql` (or at minimum the profiles backfill section), then try again.'
+    );
+  }
+
+  if (
+    message.includes('upsert_profile_row') ||
+    message.includes('upsert_group_member_row') ||
+    message.includes('permission denied for function') ||
+    message.includes('permission denied for table users') ||
+    message.includes('permission denied for schema auth')
+  ) {
+    return (
+      'Your Supabase `create_group_with_owner` RPC is outdated or missing required `security definer` privileges. ' +
+      'Please re-apply `supabase/schema.sql` in your Supabase project and try again.'
     );
   }
 
@@ -269,6 +292,7 @@ export function useGroupsDomain({
           if (!isRecoverableCreateGroupRpcError(rpcError)) {
             throw rpcError;
           }
+          console.warn('Falling back to direct group creation after RPC failure:', rpcError);
           data = await createGroupDirectly();
         } else {
           data = rpcData;
@@ -305,6 +329,7 @@ export function useGroupsDomain({
         setGroups((prev) => [normalized, ...prev]);
         return normalized;
       } catch (error) {
+        console.error('Failed to create group:', error);
         throw new Error(normalizeCreateGroupError(error));
       }
     },
